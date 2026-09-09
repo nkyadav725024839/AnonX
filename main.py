@@ -2862,7 +2862,7 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # 🎖️ result leaderboard
 async def compile_group_leaderboard(chat_id, context):
-    """Complete leaderboard with automatic cleanup after 10 minutes - NO RACE CONDITIONS"""
+    """Complete leaderboard with automatic cleanup after 10 minutes"""
     try:
         game = GROUP_GAMES.get(chat_id)
         if not game:
@@ -2893,10 +2893,12 @@ async def compile_group_leaderboard(chat_id, context):
             # ✅ Convert correct_ans to INTEGER
             try:
                 correct_idx = int(correct_ans)
+                # Validate range
                 if correct_idx < 0 or correct_idx >= len(options):
                     logging.warning(f"Q{idx}: Invalid index {correct_idx}, using 0")
                     correct_idx = 0
             except (ValueError, TypeError):
+                # Fallback: try string matching (backward compat)
                 try:
                     correct_idx = options.index(str(correct_ans))
                     logging.info(f"Q{idx}: Converted string '{correct_ans}' to index {correct_idx}")
@@ -2904,7 +2906,7 @@ async def compile_group_leaderboard(chat_id, context):
                     correct_idx = 0
                     logging.warning(f"Q{idx}: Could not find '{correct_ans}', using 0")
             
-            correct_answers[idx] = correct_idx
+            correct_answers[idx] = correct_idx  # 🟢 Store INTEGER
             logging.info(f"✅ Leaderboard Q{idx}: correct_answer={correct_idx}, option='{options[correct_idx] if correct_idx < len(options) else 'N/A'}'")
         
         final_scores = {}
@@ -2917,10 +2919,11 @@ async def compile_group_leaderboard(chat_id, context):
             total_time = 0.0
             
             for question_idx, answer_data in user_answers.items():
-                selected_idx = answer_data["selected"]
-                correct_idx = correct_answers.get(question_idx, -1)
+                selected_idx = answer_data["selected"]  # User ne jo select kiya
+                correct_idx = correct_answers.get(question_idx, -1)  # 🟢 Correct answer index
                 
-                logging.info(f"User {uid}, Q{question_idx}: selected={selected_idx}, correct={correct_idx}, match={selected_idx == correct_idx}")
+                # 🟢 FIXED: Direct integer comparison (both are now INTEGER)
+                logging.info(f"User {uid}, Q{question_idx}: selected={selected_idx} (type: {type(selected_idx).__name__}), correct={correct_idx} (type: {type(correct_idx).__name__}), match={selected_idx == correct_idx}")
                 
                 if selected_idx == correct_idx:
                     score += 1
@@ -2931,10 +2934,11 @@ async def compile_group_leaderboard(chat_id, context):
                 else:
                     wrong += 1
             
+            # Core Formula: Right - (Wrong * Selected Button Value)
             calculated_points = float(score) - (float(wrong) * float(db_neg_multiplier))
             final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time, "points": calculated_points}
         
-        # Dynamic Sorting
+        # Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
         sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:50]
         
         header = f"🏁 <b>The quiz '{escape_markdown(quiz_title)}' has finished!</b>\n"
@@ -2944,6 +2948,7 @@ async def compile_group_leaderboard(chat_id, context):
         subheader += f"👥 <b>Total Participants: {len(final_scores)}</b>\n"
         subheader += f"━━━━━━━━━━━━━━━━━\n\n"
         
+        # 🎭 डायलॉग्स पूल (बिना किसी फिक्स नाम के - रैंडमली इस्तेमाल के लिए)
         roasts_topper = [
             "[टॉपर भाई] भाई तुमने तो सीधे किताब ही रट मारी थी क्या? 🎓",
             "[किताबी कीड़ा] इतनी पढ़ाई कहाँ से करते हो भाई? 📚",
@@ -2984,18 +2989,21 @@ async def compile_group_leaderboard(chat_id, context):
         for idx, (uid, meta) in enumerate(sorted_scores, 1):
             user_display_name = game["joined_users"].get(uid, "Unknown User")
             
+            # 🌟 FIX: Agar name @ se shuru hota hai (username hai), toh escape nahi karenge
             if str(user_display_name).startswith("@"):
-                clean_username = user_display_name
+                clean_username = user_display_name  # Keep pure clickable username
             else:
-                clean_username = escape_markdown(user_display_name)
+                clean_username = escape_markdown(user_display_name) # Safe escape for normal names
                 
             score = meta["score"]
             wrong_count = meta["wrong"]
             points = meta["points"]
             total_time = format_time(meta["total_time"])
             
+            # रोस्ट लॉजिक के लिए स्कोर परसेंटेज निकालना
             percentage = (points / total_questions_answered * 100) if total_questions_answered > 0 else 0.0
             
+            # 🔥 फिक्स रोस्ट सिलेक्शन: रैंक 1 को हमेशा टॉपर का सम्मान मिलेगा
             if idx == 1:
                 roast_msg = random.choice(roasts_topper)
             elif points < 0:
@@ -3007,6 +3015,7 @@ async def compile_group_leaderboard(chat_id, context):
                 
             rank_icon = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"#{idx}"
             
+            # Clean layout print without invalid characters or slashes
             leaderboard += f"{rank_icon} <b>{clean_username}</b>\n"
             leaderboard += f"   ➻ <b>✅ सही:</b> {score}\n"
             leaderboard += f"   ➻ <b>❌ गलत:</b> {wrong_count}\n"
@@ -3020,10 +3029,11 @@ async def compile_group_leaderboard(chat_id, context):
         
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
         
+        # ✅ COLORED BUTTONS - Raw dictionary payload use karo
         keyboard = [
             [
-                {"text": "🔄 Start Again", "url": share_url, "style": "primary"},
-                {"text": "📚 Ask AI Tutor", "callback_data": f"asktutor_{game['quiz_id']}_{chat_id}", "style": "success"}
+                {"text": "🔄 Start Again", "url": share_url, "style": "primary"},  # 🔵 BLUE
+                {"text": "📚 Ask AI Tutor", "callback_data": f"asktutor_{game['quiz_id']}_{chat_id}", "style": "success"}  # 🟢 GREEN
             ]
         ]
         
@@ -3034,38 +3044,37 @@ async def compile_group_leaderboard(chat_id, context):
             parse_mode="HTML"
         )
         
+        # ✅ STEP 1: Data को 10 minutes के लिए memory में रखो
         logging.info(f"✅ Leaderboard sent for chat {chat_id}")
-        logging.info(f"🕐 Scheduling cleanup in 10 minutes...")
+        logging.info(f"🕐 [TIMER-START] Data will be available for tutor for 10 minutes...")
         
-        # ✅ FIX: Cleanup को Global variable mein track karo (avoid duplicate schedules)
-        cleanup_key = f"cleanup_{chat_id}"
-        
+        # ✅ STEP 2: 10 minutes baad cleanup schedule karo
         async def cleanup_after_delay():
             """10 minutes exactly baad GROUP_GAMES se data remove karo"""
             try:
-                logging.info(f"⏳ Cleanup timer started for chat {chat_id} - waiting 600 seconds...")
+                logging.info(f"⏳ [CLEANUP-TIMER] Started for chat {chat_id} - will wait 600 seconds")
                 await asyncio.sleep(600)  # 10 minutes = 600 seconds
                 
                 if chat_id in GROUP_GAMES:
                     quiz_id = GROUP_GAMES[chat_id].get("quiz_id")
                     GROUP_GAMES.pop(chat_id, None)
-                    logging.info(f"✅ [CLEANUP COMPLETE] Removed GROUP_GAMES for chat {chat_id} (quiz_id={quiz_id})")
+                    logging.info(f"✅ [CLEANUP-EXECUTED] Removed GROUP_GAMES[{chat_id}] (quiz_id={quiz_id})")
+                    logging.info(f"   Users ab sirf warning message dekh payenge ⏰")
                 else:
-                    logging.info(f"⚠️ [CLEANUP] Chat {chat_id} pehle se hi remove tha")
+                    logging.info(f"⚠️ [CLEANUP-FAILED] GROUP_GAMES[{chat_id}] already removed")
                     
             except asyncio.CancelledError:
-                logging.info(f"⚠️ [CLEANUP] Cleanup task cancelled for chat {chat_id}")
+                logging.info(f"⚠️ [CLEANUP-CANCELLED] Cleanup task cancelled for chat {chat_id}")
             except Exception as e:
-                logging.error(f"❌ [CLEANUP] Error during cleanup for chat {chat_id}: {e}")
+                logging.error(f"❌ [CLEANUP-ERROR] Error during cleanup for chat {chat_id}: {e}")
         
-        # ✅ FIX: Cleanup task ko create aur store karo
+        # Background task mein run karo (fire and forget)
         cleanup_task = asyncio.create_task(cleanup_after_delay())
-        logging.info(f"🔔 [CLEANUP] Task created for chat {chat_id} - will run in 600 seconds")
-        logging.info(f"📊 [DEBUG] GROUP_GAMES status: {chat_id} -> exists: {chat_id in GROUP_GAMES}")
+        logging.info(f"🔔 [TIMER-SCHEDULED] Cleanup will run in 600 seconds for chat {chat_id}")
         
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}", exc_info=True)
-
+        
 # ask Ai tutor
 async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show user ke galat questions - 10 min tak hi available"""
