@@ -3066,7 +3066,175 @@ async def compile_group_leaderboard(chat_id, context):
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}", exc_info=True)
 
-# ask Ai tutor 
+# ask Ai tutor
+async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user ke galat questions - 10 min tak hi available"""
+    try:
+        query = update.callback_query
+        if not query:
+            return
+            
+        try:
+            await query.answer(timeout=5)
+        except Exception:
+            pass
+        
+        parts = query.data.split("_")
+        if len(parts) < 3:
+            await query.message.reply_text("❌ Invalid callback data")
+            return
+            
+        try:
+            quiz_id = int(parts[1])
+            chat_id = int(parts[2])
+        except (ValueError, IndexError):
+            await query.message.reply_text("❌ Invalid quiz/chat ID")
+            return
+            
+        user_id = query.from_user.id
+        user_name = query.from_user.first_name or "User"
+        
+        # ✅ DEBUG LOGGING
+        logging.info(f"🎓 Tutor request from @{user_name} (ID: {user_id}) for quiz {quiz_id} in chat {chat_id}")
+        logging.info(f"📊 GROUP_GAMES has chat {chat_id}: {chat_id in GROUP_GAMES}")
+        
+        # ✅ GROUP_GAMES mein data check
+        game = GROUP_GAMES.get(chat_id)
+        if not game:
+            logging.warning(f"⚠️ GROUP_GAMES[{chat_id}] not found - data cleaned or expired")
+            await query.message.reply_text(
+                f"⏰ <b>@{user_name} आपका समय समाप्त हो गया!</b>\n\n"
+                "😔 Quiz खत्म होने के 10 मिनट तक ही आप अपने गलत सवालों की समझाइश देख सकते हैं।\n\n"
+                "ℹ️ Next time जल्दी देखना!\n\n"
+                "💡 नया quiz खेलने के लिए /start दबाएं।",
+                parse_mode="HTML"
+            )
+            return
+        
+        logging.info(f"✅ Found game data for chat {chat_id}")
+        
+        user_answers = game.get("user_answers", {}).get(user_id)
+        logging.info(f"📋 User answers found: {user_answers is not None}")
+        
+        if not user_answers:
+            logging.warning(f"⚠️ User {user_id} not in user_answers")
+            await query.message.reply_text(f"❌ @{user_name}, आप इस quiz में शामिल नहीं थे")
+            return
+        
+        # Get quiz questions
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT question_text, options, correct_answer, explanation FROM questions WHERE quiz_id = ?", (quiz_id,))
+        all_questions = cursor.fetchall()
+        conn.close()
+        
+        logging.info(f"📚 Fetched {len(all_questions)} questions from database")
+        
+        if not all_questions:
+            await query.message.reply_text(f"❌ @{user_name}, Questions नहीं मिले")
+            return
+        
+        # Find wrong answers
+        wrong_questions = []
+        for q_idx, (q_text, options_json, correct_ans, explanation) in enumerate(all_questions):
+            
+            if q_idx not in user_answers:
+                continue
+            
+            answer_data = user_answers[q_idx]
+            selected_idx = answer_data.get("selected", -1)
+            correct_idx = answer_data.get("correct_idx", -1)
+            
+            logging.info(f"Q{q_idx}: selected={selected_idx}, correct={correct_idx}")
+            
+            if selected_idx == -1:
+                continue
+                
+            if selected_idx != correct_idx:
+                options = json.loads(options_json)
+                
+                if 0 <= selected_idx < len(options) and 0 <= correct_idx < len(options):
+                    wrong_questions.append({
+                        "q_number": len(wrong_questions) + 1,
+                        "question": q_text,
+                        "options": options,
+                        "user_selected_idx": selected_idx,
+                        "correct_idx": correct_idx,
+                        "explanation": explanation if explanation else "समझाइश उपलब्ध नहीं"
+                    })
+        
+        logging.info(f"✅ Found {len(wrong_questions)} wrong questions")
+        
+        # अगर कोई गलत सवाल नहीं
+        if not wrong_questions:
+            await query.message.reply_text(
+                f"✅ <b>@{user_name} शाबाश! 🎉</b>\n\n"
+                "आपने सभी सवालों के सही जवाब दिए हैं!\n"
+                "आपका प्रदर्शन शानदार रहा! 👏",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Build message
+        tutor_text = (
+            f"📚 <b>@{user_name} के गलत सवाल और समझाइश</b>\n"
+            f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        )
+        
+        for q in wrong_questions:
+            tutor_text += (
+                f"<b>❓ प्रश्न #{q['q_number']}:</b>\n"
+                f"{escape_markdown(q['question'])}\n\n"
+                f"<b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}\n"
+                f"<b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}\n\n"
+                f"<b>📖 समझाइश:</b>\n"
+                f"{escape_markdown(q['explanation'])}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            )
+        
+        # Handle long messages
+        if len(tutor_text) > 4096:
+            messages = []
+            current_msg = (
+                f"📚 <b>@{user_name} के गलत सवाल और समझाइश</b>\n"
+                f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            )
+            
+            for q in wrong_questions:
+                chunk = (
+                    f"<b>❓ प्रश्न #{q['q_number']}:</b>\n"
+                    f"{escape_markdown(q['question'])}\n\n"
+                    f"<b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}\n"
+                    f"<b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}\n\n"
+                    f"<b>📖 समझाइश:</b>\n"
+                    f"{escape_markdown(q['explanation'])}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                )
+                
+                if len(current_msg) + len(chunk) > 4096:
+                    messages.append(current_msg)
+                    current_msg = chunk
+                else:
+                    current_msg += chunk
+            
+            if current_msg:
+                messages.append(current_msg)
+            
+            for msg in messages:
+                await query.message.reply_text(msg, parse_mode="HTML")
+        else:
+            await query.message.reply_text(tutor_text, parse_mode="HTML")
+        
+        logging.info(f"✅ Sent explanations to @{user_name} ({len(wrong_questions)} wrong questions)")
+        
+    except Exception as e:
+        logging.error(f"Error in handle_ask_tutor: {e}", exc_info=True)
+        try:
+            await query.message.reply_text(f"❌ Error: {str(e)[:50]}")
+        except:
+            pass
                  
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
