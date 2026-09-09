@@ -2592,7 +2592,8 @@ async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in stop_quiz: {e}", exc_info=True)
         await update.message.reply_text("❌ Error stopping quiz")
-        
+
+
 async def send_next_group_poll(chat_id, context):
     """Send the next quiz question as a poll to the group (Handles Question, Option & Explanation Limits)"""
     try:
@@ -2626,10 +2627,15 @@ async def send_next_group_poll(chat_id, context):
         questions = cursor.fetchall()
         conn.close()
         
-        # Check if all questions completed
+        # ✅ CHECK if all questions completed
         if game["current_q"] >= len(questions):
+            logging.info(f"✅ All questions completed for chat {chat_id}")
             await compile_group_leaderboard(chat_id, context)
-            GROUP_GAMES.pop(chat_id, None)
+            
+            # ✅ FIX: यहाँ GROUP_GAMES.pop() को REMOVE किया है
+            # GROUP_GAMES.pop(chat_id, None)  # ❌ REMOVE THIS - Let cleanup handler do it
+            
+            logging.info(f"🕐 GROUP_GAMES for {chat_id} will be cleaned in 10 minutes automatically")
             return
 
         q = questions[game["current_q"]]
@@ -2718,7 +2724,7 @@ async def send_next_group_poll(chat_id, context):
                     options=poll_options, 
                     type="quiz", 
                     correct_option_id=correct_idx,
-                    explanation=clean_explanation, # अब यह 200 कैरेक्टर से बड़ा होने पर अपने आप None हो जाएगा
+                    explanation=clean_explanation,
                     is_anonymous=False,
                     open_period=raw_timer
                 )
@@ -2811,7 +2817,7 @@ async def send_next_group_poll(chat_id, context):
             
     except Exception as e:
         logging.error(f"Error in send_next_group_poll: {e}", exc_info=True)
-
+        
 async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ans = update.poll_answer
