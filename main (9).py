@@ -3047,6 +3047,141 @@ async def compile_group_leaderboard(chat_id, context):
         GROUP_GAMES.pop(chat_id, None)
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}")
+
+# ====================================================================
+# 🎓 SIMPLE AI TUTOR - Just Show Existing Explanations
+# ====================================================================
+
+async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Simply show user ke galat questions ke explanations"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Parse: asktutor_quiz_id_chat_id
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        chat_id = int(parts[2])
+        user_id = query.from_user.id
+        
+        logging.info(f"🎓 Tutor request from user {user_id} for quiz {quiz_id}")
+        
+        # Check quiz data
+        if chat_id not in GROUP_GAMES:
+            await query.answer("❌ Quiz data नहीं मिला", show_alert=True)
+            return
+        
+        game = GROUP_GAMES[chat_id]
+        
+        # Check user participation
+        if user_id not in game["user_answers"]:
+            await query.answer("❌ आप इस quiz में शामिल नहीं थे", show_alert=True)
+            return
+        
+        # Get quiz questions with explanations
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT question_text, options, correct_answer, explanation FROM questions WHERE quiz_id = ?", (quiz_id,))
+        all_questions = cursor.fetchall()
+        conn.close()
+        
+        if not all_questions:
+            await query.answer("❌ Questions नहीं मिले", show_alert=True)
+            return
+        
+        # Find wrong answers
+        wrong_questions = []
+        for q_idx, (q_text, options_json, correct_ans, explanation) in enumerate(all_questions):
+            if q_idx in game["user_answers"][user_id]:
+                answer_data = game["user_answers"][user_id][q_idx]
+                selected_idx = answer_data["selected"]
+                correct_idx = answer_data["correct_idx"]
+                
+                # अगर गलत उत्तर दिया
+                if selected_idx != correct_idx and selected_idx != -1:
+                    options = json.loads(options_json)
+                    wrong_questions.append({
+                        "q_number": q_idx + 1,
+                        "question": q_text,
+                        "options": options,
+                        "user_selected_idx": selected_idx,
+                        "correct_idx": correct_idx,
+                        "explanation": explanation if explanation else "समझाइश उपलब्ध नहीं"
+                    })
+        
+        # अगर कोई गलत सवाल नहीं
+        if not wrong_questions:
+            await query.message.reply_text(
+                "✅ <b>शाबाश! 🎉</b>\n\n"
+                "आपने सभी सवालों के सही जवाब दिए हैं!\n"
+                "आपका प्रदर्शन शानदार रहा! 👏",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Show all wrong questions with explanations
+        tutor_text = (
+            f"📚 <b>आपके गलत सवाल और समझाइश</b>\n"
+            f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        )
+        
+        for idx, q in enumerate(wrong_questions, 1):
+            tutor_text += (
+                f"<b>❓ प्रश्न #{q['q_number']}:</b>\n"
+                f"{escape_markdown(q['question'])}\n\n"
+                f"<b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}\n"
+                f"<b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}\n\n"
+                f"<b>📖 समझाइश:</b>\n"
+                f"{escape_markdown(q['explanation'])}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            )
+        
+        # अगर बहुत लंबा हो तो split करो
+        if len(tutor_text) > 4096:
+            # Multiple messages भेजो
+            messages = []
+            current_msg = (
+                f"📚 <b>आपके गलत सवाल और समझाइश</b>\n"
+                f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            )
+            
+            for q in wrong_questions:
+                chunk = (
+                    f"<b>❓ प्रश्न #{q['q_number']}:</b>\n"
+                    f"{escape_markdown(q['question'])}\n\n"
+                    f"<b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}\n"
+                    f"<b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}\n\n"
+                    f"<b>📖 समझाइश:</b>\n"
+                    f"{escape_markdown(q['explanation'])}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                )
+                
+                # अगर current message + chunk > 4096, तो new message शुरु करो
+                if len(current_msg) + len(chunk) > 4096:
+                    messages.append(current_msg)
+                    current_msg = chunk
+                else:
+                    current_msg += chunk
+            
+            if current_msg:
+                messages.append(current_msg)
+            
+            # सभी messages भेजो
+            for msg in messages:
+                await query.message.reply_text(msg, parse_mode="HTML")
+        else:
+            await query.message.reply_text(tutor_text, parse_mode="HTML")
+        
+        logging.info(f"✅ User {user_id}: {len(wrong_questions)} wrong questions shown")
+        
+    except Exception as e:
+        logging.error(f"Error in handle_ask_tutor: {e}", exc_info=True)
+        try:
+            await query.answer("❌ Error", show_alert=True)
+        except:
+            pass
                  
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
@@ -4290,6 +4425,8 @@ async def main():
         app.add_handler(CallbackQueryHandler(view_my_quizzes, pattern="^btn_viewquizzes$"))
         app.add_handler(CallbackQueryHandler(handle_back_main, pattern="^back_main$"))
         app.add_handler(CallbackQueryHandler(handle_view_quiz_callback, pattern="^viewq_"))
+        # अन्य handlers के साथ add करें:
+        app.add_handler(CallbackQueryHandler(handle_ask_tutor, pattern="^asktutor_"))
         
         app.add_handler(CallbackQueryHandler(handle_ready_click, pattern="^ready_"))
         app.add_handler(CallbackQueryHandler(handle_start_private, pattern="^startprivate_"))
