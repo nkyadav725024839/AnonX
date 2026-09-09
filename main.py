@@ -85,7 +85,7 @@ DB_FILE = "quiz_bot.db"
 
 # Global dictionary for active group games memory
 GROUP_GAMES = {}
-
+TUTOR_SESSIONS = {}  # {user_id: {quiz_id: wrong_questions}}
 # In-memory map for autorun asyncio tasks: key = autorun_id, value = asyncio.Task
 AUTORUN_TASKS = {}
 # Global autorun serial lock — ensures autoruns run one-by-one in SUPPORT_GROUP_ID
