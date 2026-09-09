@@ -4532,7 +4532,6 @@ async def main():
         app.add_handler(CallbackQueryHandler(view_my_quizzes, pattern="^btn_viewquizzes$"))
         app.add_handler(CallbackQueryHandler(handle_back_main, pattern="^back_main$"))
         app.add_handler(CallbackQueryHandler(handle_view_quiz_callback, pattern="^viewq_"))
-        app.add_handler(CallbackQueryHandler(handle_tutor_more, pattern="^tutor_explain_"))
         # अन्य handlers के साथ add करें (लगभग line 3200):
         app.add_handler(CallbackQueryHandler(handle_ask_tutor, pattern="^asktutor_"))
         app.add_handler(CallbackQueryHandler(handle_tutor_navigation, pattern="^tutor_(next|prev)_"))
