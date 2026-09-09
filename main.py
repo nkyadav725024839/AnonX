@@ -2861,7 +2861,218 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logging.error(f"Error in track_poll_answers: {e}")
 
 # 🎖️ result leaderboard 
+async def compile_group_leaderboard(chat_id, context):
+    """Complete leaderboard with automatic cleanup after 10 minutes"""
+    try:
+        game = GROUP_GAMES.get(chat_id)
+        if not game:
+            return
+        
+        bot_username = context.bot.username if context.bot.username else "quiz_bot"
+        
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        # Title ke sath negative_value column fetch ki
+        cursor.execute("SELECT title, negative_value FROM quizzes WHERE quiz_id = ?", (game["quiz_id"],))
+        quiz_data = cursor.fetchone()
+        quiz_title = quiz_data[0] if quiz_data else "Quiz"
+        db_neg_multiplier = quiz_data[1] if (quiz_data and len(quiz_data) > 1) else 0.0
+        
+        cursor.execute("SELECT question_text, options, correct_answer FROM questions WHERE quiz_id = ?", (game["quiz_id"],))
+        questions = cursor.fetchall()
+        conn.close()
+        
+        total_questions_answered = len(questions)
+        correct_answers = {}
+        
+        # 🟢 FIXED: Convert ALL correct_answer values to INTEGER index
+        for idx, (q_text, options_json, correct_ans) in enumerate(questions):
+            options = json.loads(options_json)
+            
+            # ✅ Convert correct_ans to INTEGER
+            try:
+                correct_idx = int(correct_ans)  # 🟢 Direct conversion
+                # Validate range
+                if correct_idx < 0 or correct_idx >= len(options):
+                    logging.warning(f"Q{idx}: Invalid index {correct_idx}, using 0")
+                    correct_idx = 0
+            except (ValueError, TypeError):
+                # Fallback: try string matching (backward compat)
+                try:
+                    correct_idx = options.index(str(correct_ans))
+                    logging.info(f"Q{idx}: Converted string '{correct_ans}' to index {correct_idx}")
+                except ValueError:
+                    correct_idx = 0
+                    logging.warning(f"Q{idx}: Could not find '{correct_ans}', using 0")
+            
+            correct_answers[idx] = correct_idx  # 🟢 Store INTEGER
+            logging.info(f"✅ Leaderboard Q{idx}: correct_answer={correct_idx}, option='{options[correct_idx] if correct_idx < len(options) else 'N/A'}'")
+        
+        final_scores = {}
+        for uid in game["user_answers"].keys():
+            final_scores[uid] = {"score": 0, "wrong": 0, "total_time": 0.0, "points": 0.0}
 
+        for uid, user_answers in game["user_answers"].items():
+            score = 0
+            wrong = 0
+            total_time = 0.0
+            
+            for question_idx, answer_data in user_answers.items():
+                selected_idx = answer_data["selected"]  # User ne jo select kiya
+                correct_idx = correct_answers.get(question_idx, -1)  # 🟢 Correct answer index
+                
+                # 🟢 FIXED: Direct integer comparison (both are now INTEGER)
+                logging.info(f"User {uid}, Q{question_idx}: selected={selected_idx} (type: {type(selected_idx).__name__}), correct={correct_idx} (type: {type(correct_idx).__name__}), match={selected_idx == correct_idx}")
+                
+                if selected_idx == correct_idx:
+                    score += 1
+                    start_time = game["question_start_times"].get(question_idx, answer_data["timestamp"])
+                    if isinstance(start_time, datetime):
+                        elapsed = (answer_data["timestamp"] - start_time).total_seconds()
+                        total_time += max(0, elapsed)
+                else:
+                    wrong += 1
+            
+            # Core Formula: Right - (Wrong * Selected Button Value)
+            calculated_points = float(score) - (float(wrong) * float(db_neg_multiplier))
+            final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time, "points": calculated_points}
+        
+        # Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
+        sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:50]
+        
+        header = f"🏁 <b>The quiz '{escape_markdown(quiz_title)}' has finished!</b>\n"
+        header += f"📉 <b>Negative Marking Applied: -{db_neg_multiplier} per wrong answer</b>\n\n"
+        
+        subheader = f"📋 <b>{total_questions_answered} questions answered</b>\n"
+        subheader += f"👥 <b>Total Participants: {len(final_scores)}</b>\n"
+        subheader += f"━━━━━━━━━━━━━━━━━\n\n"
+        
+        # 🎭 डायलॉग्स पूल (बिना किसी फिक्स नाम के - रैंडमली इस्तेमाल के लिए)
+        roasts_topper = [
+            "[टॉपर भाई] भाई तुमने तो सीधे किताब ही रट मारी थी क्या? 🎓",
+            "[किताबी कीड़ा] इतनी पढ़ाई कहाँ से करते हो भाई? 📚",
+            "[गूगल का दामाद] भाई गूगल से सीधा कनेक्शन है क्या? 🔗",
+            "[वैज्ञानिक] इतना दिमाग लाते कहाँ से हो भाई? 🧠",
+            "[रट्टू तोता] लगता है आज सुबह पूरी किताब खा गए! 🦜",
+        ]
+        
+        roasts_middle = [
+            "[उड़ता परिंदा] नाम की तरह बस हवा में ही उड़ते रह गए 🪶",
+            "[समीक्षा बाबू] दूसरों की आलोचना करने में तो अव्वल हो! 😄",
+            "[त्रिशंकु खिलाड़ी] ना ऊपर, ना नीचे - बीच में ही लटके 🪂",
+            "[सेफ राइडर] उतना ही रिस्क लिया जितना जरूरत था 🛡️",
+            "[मिस कॉल] नंबर ठीक पर किस्मत नहीं साथ! 📞",
+        ]
+        
+        roasts_low = [
+            "[सिर्फ हाजिरी] सिर्फ परीक्षा हॉल की हवा खाने आए? 💨",
+            "[पूजा की थाली] श्रद्धा और भावना से नंबर नहीं मिलते 🙏",
+            "[आंसू की बूंद] नंबर देखकर आंखें भीग गईं 😢",
+            "[सिर्फ मुस्कान] चेहरे पर मुस्कान, पर मन टूटा 😅",
+            "[मिस्टर गुमनाम] नाम के आगे टैग से नंबर नहीं मिलते 🏷️",
+            "[दर्शक दीर्घा] सिर्फ तमाशा देखने आए थे 🎭",
+            "[अंगूठा छाप] उंगलियां चलीं पर दिमाग नहीं 👆",
+            "[धूप सेकने वाले] परीक्षा हॉल में धूप सेक रहे थे? ☀️",
+            "[मार्कशीट का विलेन] घरवाले को दिखाओ तो सीधे गोली! 🔫",
+        ]
+        
+        roasts_minus = [
+            "[कर्जदार खिलाड़ी] परीक्षक से भी उधार में नंबर! 😂",
+            "[माइनस मास्टर] माइनस मार्किंग आपके लिए ही बनी थी 📉",
+            "[दिवालिया] बैंक वाले भी लोन देने से मना करेंगे 🏦",
+            "[दानवीर कर्ण] सारे नंबर गलत जवाब को दान कर आए 🙏",
+            "[ब्लैक होल] नंबर आते नहीं, सीधे गायब हो जाते हैं 🕳️",
+        ]
+
+        leaderboard = ""
+        for idx, (uid, meta) in enumerate(sorted_scores, 1):
+            user_display_name = game["joined_users"].get(uid, "Unknown User")
+            
+            # 🌟 FIX: Agar name @ se shuru hota hai (username hai), toh escape nahi karenge
+            if str(user_display_name).startswith("@"):
+                clean_username = user_display_name  # Keep pure clickable username
+            else:
+                clean_username = escape_markdown(user_display_name) # Safe escape for normal names
+                
+            score = meta["score"]
+            wrong_count = meta["wrong"]
+            points = meta["points"]
+            total_time = format_time(meta["total_time"])
+            
+            # रोस्ट लॉजिक के लिए स्कोर परसेंटेज निकालना
+            percentage = (points / total_questions_answered * 100) if total_questions_answered > 0 else 0.0
+            
+            # 🔥 फिक्स रोस्ट सिलेक्शन: रैंक 1 को हमेशा टॉपर का सम्मान मिलेगा
+            if idx == 1:
+                roast_msg = random.choice(roasts_topper)
+            elif points < 0:
+                roast_msg = random.choice(roasts_minus)
+            elif percentage < 25:
+                roast_msg = random.choice(roasts_low)
+            else:
+                roast_msg = random.choice(roasts_middle)
+                
+            rank_icon = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"#{idx}"
+            
+            # Clean layout print without invalid characters or slashes
+            leaderboard += f"{rank_icon} <b>{clean_username}</b>\n"
+            leaderboard += f"   ➻ <b>✅ सही:</b> {score}\n"
+            leaderboard += f"   ➻ <b>❌ गलत:</b> {wrong_count}\n"
+            leaderboard += f"   ➻ <b>⏱️ समय:</b> {total_time}\n"
+            leaderboard += f"   <blockquote><b>🎯 Final Score: {points:.2f} Points</b></blockquote>\n"
+            leaderboard += f"   <blockquote><b>{roast_msg}</b></blockquote>\n"
+            leaderboard += f"   🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n"
+        
+        footer = "\n🏆 Congratulations to all participants!"
+        full_message = header + subheader + leaderboard + footer
+        
+        share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
+        
+        # ✅ COLORED BUTTONS - Raw dictionary payload use karo
+        keyboard = [
+            [
+                {"text": "🔄 Start Again", "url": share_url, "style": "primary"},  # 🔵 BLUE
+                {"text": "📚 Ask AI Tutor", "callback_data": f"asktutor_{game['quiz_id']}_{chat_id}", "style": "success"}  # 🟢 GREEN
+            ]
+        ]
+        
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=full_message, 
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        
+        # ✅ STEP 1: Data को 10 minutes के लिए memory में रखो
+        logging.info(f"✅ Leaderboard sent for chat {chat_id}")
+        logging.info(f"🕐 Data will be available for tutor for 10 minutes...")
+        
+        # ✅ STEP 2: 10 minutes baad cleanup schedule karo
+        async def cleanup_after_delay():
+            """10 minutes baad GROUP_GAMES se data remove karo"""
+            try:
+                await asyncio.sleep(600)  # 10 minutes = 600 seconds
+                
+                if chat_id in GROUP_GAMES:
+                    quiz_id = GROUP_GAMES[chat_id].get("quiz_id")
+                    GROUP_GAMES.pop(chat_id, None)
+                    logging.info(f"✅ [CLEANUP] Cleaned up GROUP_GAMES for chat {chat_id} (quiz_id={quiz_id})")
+                    logging.info(f"   Users ab sirf warning message dekh payenge ⏰")
+                else:
+                    logging.info(f"⚠️ [CLEANUP] Chat {chat_id} pehle se hi remove tha")
+                    
+            except asyncio.CancelledError:
+                logging.info(f"⚠️ [CLEANUP] Cleanup task cancelled for chat {chat_id}")
+            except Exception as e:
+                logging.error(f"❌ [CLEANUP] Error during cleanup for chat {chat_id}: {e}")
+        
+        # Background task mein run karo (fire and forget)
+        cleanup_task = asyncio.create_task(cleanup_after_delay())
+        logging.info(f"🔔 Cleanup scheduled for chat {chat_id} in 600 seconds...")
+        
+    except Exception as e:
+        logging.error(f"Error in compile_group_leaderboard: {e}", exc_info=True)
 
 # ====================================================================
 # 🎓 SIMPLE AI TUTOR - Just Show Existing Explanations
