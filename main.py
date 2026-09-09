@@ -3026,29 +3026,22 @@ async def compile_group_leaderboard(chat_id, context):
         full_message = header + subheader + leaderboard + footer
         
         # 🌟 FIX: Library wrapper ko bypass karke raw dictionary payload bheja taaki crash na ho
+        # compile_group_leaderboard function में, जहाँ buttons हैं:
+
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
         
-        # Raw structure format dictionary injection
-        # ✅ नया कोड - दोनों बटन:
-        raw_button_again = {
-            "text": "Start Again ✨",
-            "url": share_url,
-            "style": "success"  # Hara (Green) rang
-        }
-
-        raw_button_tutor = {
-            "text": "📚 Ask AI Tutor",
-            "callback_data": f"asktutor_{game['quiz_id']}",
-            "style": "primary"  # Neela (Blue) rang
-        }
-
-        # दोनों बटन एक row में
-        kb = [[raw_button_again, raw_button_tutor]]
+        # ✅ दोनों बटन - Side by Side
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 Start Again", url=share_url),
+                InlineKeyboardButton("📚 Ask AI Tutor", callback_data=f"asktutor_{game['quiz_id']}_{chat_id}")
+            ]
+        ]
         
         await context.bot.send_message(
             chat_id=chat_id, 
             text=full_message, 
-            reply_markup=InlineKeyboardMarkup(kb),
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
         GROUP_GAMES.pop(chat_id, None)
