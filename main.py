@@ -2534,7 +2534,7 @@ async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFA
             except Exception:
                 pass # अगर पोल पहले से बंद हो तो एरर न आए
         
-        # Tracking clear karein
+        # Tracking clear करें
         game.pop("pause_message_id", None)
         
         await query.edit_message_text(
@@ -2544,8 +2544,10 @@ async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFA
         
         await compile_group_leaderboard(chat_id, context)
         
-        # ⚡ फिक्स 3: रिजल्ट दिखाने के बाद डेटा को मेमोरी से पूरी तरह डिलीट करें
-        GROUP_GAMES.pop(chat_id, None)
+        # ✅ FIX: यहाँ भी GROUP_GAMES.pop() को REMOVE किया है
+        # GROUP_GAMES.pop(chat_id, None)  # ❌ REMOVE THIS - Let cleanup handler do it
+        
+        logging.info(f"🕐 Cleanup will happen automatically in 10 minutes for chat {chat_id}")
         
     except Exception as e:
         logging.error(f"Error in handle_stop_quiz_from_pause: {e}", exc_info=True)
@@ -2568,7 +2570,7 @@ async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Quiz abhi start hi nahi huya hai!")
             return
             
-        # ⚡ फिक्स 1: बैकग्राउंड टाइमर/टास्क को तुरंत मारें (Cancel करें) ताकि अगला सवाल लोड न हो
+        # ⚡ फिक्स 1: बैकग्राउंड टाइमर/टास्क को तुरंत मारें (Cancel करें)
         if "current_task" in game and not game["current_task"].done():
             game["current_task"].cancel()
             logging.info(f"Quiz background task cancelled via /stop for chat {chat_id}")
@@ -2586,13 +2588,14 @@ async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Quiz stop ho gaya! Final Result dikha raha hoon...")
         await compile_group_leaderboard(chat_id, context)
         
-        # ⚡ फिक्स 3: लीडरबोर्ड दिखाने के बाद तुरंत डेटा हटा दें ताकि मेमोरी पूरी साफ हो जाए
-        GROUP_GAMES.pop(chat_id, None)
+        # ✅ FIX: यहाँ GROUP_GAMES.pop() को REMOVE किया है
+        # GROUP_GAMES.pop(chat_id, None)  # ❌ REMOVE THIS - Let cleanup handler do it
+        
+        logging.info(f"🕐 Cleanup will happen automatically in 10 minutes for chat {chat_id}")
         
     except Exception as e:
         logging.error(f"Error in stop_quiz: {e}", exc_info=True)
         await update.message.reply_text("❌ Error stopping quiz")
-
 
 async def send_next_group_poll(chat_id, context):
     """Send the next quiz question as a poll to the group (Handles Question, Option & Explanation Limits)"""
