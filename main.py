@@ -3078,7 +3078,7 @@ async def compile_group_leaderboard(chat_id, context):
 # 🎓 SIMPLE AI TUTOR - Just Show Existing Explanations
 # ====================================================================
 async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show user ke galat questions - 10 min tak hi available"""
+    """Show user ke galat questions - Leaderboard intact rahega, new message bhej denge"""
     try:
         query = update.callback_query
         if not query:
@@ -3092,24 +3092,26 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Parse: asktutor_quiz_id_chat_id
         parts = query.data.split("_")
         if len(parts) < 3:
-            await query.edit_message_text("❌ Invalid callback data")
+            await query.message.reply_text("❌ Invalid callback data")
             return
             
         try:
             quiz_id = int(parts[1])
             chat_id = int(parts[2])
         except (ValueError, IndexError):
-            await query.edit_message_text("❌ Invalid quiz/chat ID")
+            await query.message.reply_text("❌ Invalid quiz/chat ID")
             return
             
         user_id = query.from_user.id
+        user_name = query.from_user.first_name or "User"
         logging.info(f"🎓 Tutor request from user {user_id} for quiz {quiz_id}")
         
         # ✅ GROUP_GAMES mein data nahi mila
         game = GROUP_GAMES.get(chat_id)
         if not game:
-            await query.edit_message_text(
-                "⏰ <b>आपका समय समाप्त हो गया!</b>\n\n"
+            # ⚠️ Separate message bhejo (leaderboard intact rahega)
+            await query.message.reply_text(
+                f"⏰ <b>@{user_name}</b> आपका समय समाप्त हो गया!\n\n"
                 "😔 Quiz खत्म होने के 10 मिनट तक ही आप अपने गलत सवालों की समझाइश देख सकते हैं।\n\n"
                 "ℹ️ Next time जल्दी देखना!\n\n"
                 "💡 नया quiz खेलने के लिए /start दबाएं।",
@@ -3121,7 +3123,7 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_answers = game.get("user_answers", {}).get(user_id)
         
         if not user_answers:
-            await query.edit_message_text("❌ आप इस quiz में शामिल नहीं थे")
+            await query.message.reply_text(f"❌ @{user_name}, आप इस quiz में शामिल नहीं थे")
             return
         
         # Get quiz questions with explanations
@@ -3132,7 +3134,7 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         
         if not all_questions:
-            await query.edit_message_text("❌ Questions नहीं मिले")
+            await query.message.reply_text(f"❌ @{user_name}, Questions नहीं मिले")
             return
         
         # Find wrong answers
@@ -3166,17 +3168,17 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # अगर कोई गलत सवाल नहीं
         if not wrong_questions:
-            await query.edit_message_text(
-                "✅ <b>शाबाश! 🎉</b>\n\n"
+            await query.message.reply_text(
+                f"✅ <b>@{user_name} शाबाश! 🎉</b>\n\n"
                 "आपने सभी सवालों के सही जवाब दिए हैं!\n"
                 "आपका प्रदर्शन शानदार रहा! 👏",
                 parse_mode="HTML"
             )
             return
         
-        # Build message
+        # Build message with tag
         tutor_text = (
-            f"📚 <b>आपके गलत सवाल और समझाइश</b>\n"
+            f"📚 <b>@{user_name} के गलत सवाल और समझाइश</b>\n"
             f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         )
@@ -3192,11 +3194,11 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             )
         
-        # Handle long messages
+        # Handle long messages - separate messages bhej denge
         if len(tutor_text) > 4096:
             messages = []
             current_msg = (
-                f"📚 <b>आपके गलत सवाल और समझाइश</b>\n"
+                f"📚 <b>@{user_name} के गलत सवाल और समझाइश</b>\n"
                 f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             )
@@ -3221,19 +3223,19 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if current_msg:
                 messages.append(current_msg)
             
-            # Edit first message, then reply with others
-            await query.edit_message_text(messages[0], parse_mode="HTML")
-            for msg in messages[1:]:
+            # ✅ ALL MESSAGES BHEJO (leaderboard intact)
+            for msg in messages:
                 await query.message.reply_text(msg, parse_mode="HTML")
         else:
-            await query.edit_message_text(tutor_text, parse_mode="HTML")
+            # ✅ Single message - reply karo (leaderboard intact)
+            await query.message.reply_text(tutor_text, parse_mode="HTML")
         
-        logging.info(f"✅ User {user_id}: {len(wrong_questions)} wrong questions shown")
+        logging.info(f"✅ User {user_id} (@{user_name}): {len(wrong_questions)} wrong questions shown")
         
     except Exception as e:
         logging.error(f"Error in handle_ask_tutor: {e}", exc_info=True)
         try:
-            await query.edit_message_text(f"❌ Error: {str(e)[:50]}")
+            await query.message.reply_text(f"❌ Error: {str(e)[:50]}")
         except:
             pass
                  
