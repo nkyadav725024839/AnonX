@@ -2861,198 +2861,13 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logging.error(f"Error in track_poll_answers: {e}")
 
 # 🎖️ result leaderboard 
-async def compile_group_leaderboard(chat_id, context):
-    try:
-        game = GROUP_GAMES.get(chat_id)
-        if not game:
-            return
-        
-        bot_username = context.bot.username if context.bot.username else "quiz_bot"
-        
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        # Title ke sath negative_value column fetch ki
-        cursor.execute("SELECT title, negative_value FROM quizzes WHERE quiz_id = ?", (game["quiz_id"],))
-        quiz_data = cursor.fetchone()
-        quiz_title = quiz_data[0] if quiz_data else "Quiz"
-        db_neg_multiplier = quiz_data[1] if (quiz_data and len(quiz_data) > 1) else 0.0
-        
-        cursor.execute("SELECT question_text, options, correct_answer FROM questions WHERE quiz_id = ?", (game["quiz_id"],))
-        questions = cursor.fetchall()
-        conn.close()
-        
-        total_questions_answered = len(questions)
-        correct_answers = {}
-        
-        # 🟢 FIXED: Convert ALL correct_answer values to INTEGER index
-        for idx, (q_text, options_json, correct_ans) in enumerate(questions):
-            options = json.loads(options_json)
-            
-            # ✅ Convert correct_ans to INTEGER
-            try:
-                correct_idx = int(correct_ans)  # 🟢 Direct conversion
-                # Validate range
-                if correct_idx < 0 or correct_idx >= len(options):
-                    logging.warning(f"Q{idx}: Invalid index {correct_idx}, using 0")
-                    correct_idx = 0
-            except (ValueError, TypeError):
-                # Fallback: try string matching (backward compat)
-                try:
-                    correct_idx = options.index(str(correct_ans))
-                    logging.info(f"Q{idx}: Converted string '{correct_ans}' to index {correct_idx}")
-                except ValueError:
-                    correct_idx = 0
-                    logging.warning(f"Q{idx}: Could not find '{correct_ans}', using 0")
-            
-            correct_answers[idx] = correct_idx  # 🟢 Store INTEGER
-            logging.info(f"✅ Leaderboard Q{idx}: correct_answer={correct_idx}, option='{options[correct_idx] if correct_idx < len(options) else 'N/A'}'")
-        
-        final_scores = {}
-        for uid in game["user_answers"].keys():
-            final_scores[uid] = {"score": 0, "wrong": 0, "total_time": 0.0, "points": 0.0}
 
-        for uid, user_answers in game["user_answers"].items():
-            score = 0
-            wrong = 0
-            total_time = 0.0
-            
-            for question_idx, answer_data in user_answers.items():
-                selected_idx = answer_data["selected"]  # User ne jo select kiya
-                correct_idx = correct_answers.get(question_idx, -1)  # 🟢 Correct answer index
-                
-                # 🟢 FIXED: Direct integer comparison (both are now INTEGER)
-                logging.info(f"User {uid}, Q{question_idx}: selected={selected_idx} (type: {type(selected_idx).__name__}), correct={correct_idx} (type: {type(correct_idx).__name__}), match={selected_idx == correct_idx}")
-                
-                if selected_idx == correct_idx:
-                    score += 1
-                    start_time = game["question_start_times"].get(question_idx, answer_data["timestamp"])
-                    if isinstance(start_time, datetime):
-                        elapsed = (answer_data["timestamp"] - start_time).total_seconds()
-                        total_time += max(0, elapsed)
-                else:
-                    wrong += 1
-            
-            # Core Formula: Right - (Wrong * Selected Button Value)
-            calculated_points = float(score) - (float(wrong) * float(db_neg_multiplier))
-            final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time, "points": calculated_points}
-        
-        # Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
-        sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:50]
-        
-        header = f"🏁 <b>The quiz '{escape_markdown(quiz_title)}' has finished!</b>\n"
-        header += f"📉 <b>Negative Marking Applied: -{db_neg_multiplier} per wrong answer</b>\n\n"
-        
-        subheader = f"📋 <b>{total_questions_answered} questions answered</b>\n"
-        subheader += f"👥 <b>Total Participants: {len(final_scores)}</b>\n"
-        subheader += f"━━━━━━━━━━━━━━━━━\n\n"
-        
-        # 🎭 डायलॉग्स पूल (बिना किसी फिक्स नाम के - रैंडमली इस्तेमाल के लिए)
-        roasts_topper = [
-            "[टॉपर भाई] भाई तुमने तो सीधे किताब ही रट मारी थी क्या? टॉपर बनने का इरादा प्रमाणित है!",
-            "[किताबी कीड़ा] इतनी पढ़ाई कहाँ से करते हो भाई? हमें भी थोड़ा ज्ञान दे दो, गुरुजी!",
-            "[गूगल का दामाद] भाई गूगल से सीधा कनेक्शन है क्या तुम्हारा? या फिर अंतर्यामी हो?",
-            "[वैज्ञानिक] इतना दिमाग लाते कहाँ से हो भाई? नासा (NASA) वाले ढूंढ रहे हैं तुम्हें!",
-            "[रट्टू तोता] लगता है आज सुबह नाश्ते में पूरी किताब ही चबा कर खा गए थे। बाकी सब भूल गए!",
-        ]
-        
-        roasts_middle = [
-            "[उड़ता परिंदा] नाम की तरह बस हवा में ही उड़ते रह गए, थोड़ा जमीन पर आते तो नहीं?",
-            "[समीक्षा बाबू] दूसरों की आलोचना करने में तो अव्वल हो, लेकिन नंबर देखकर लगता है सब भूल गए!",
-            "[त्रिशंकु खिलाड़ी] ना ऊपर पहुँच पाए, ना नीचे सुकून मिला। बीच में ऐसे लटके हो!",
-            "[सेफ राइडर] भाई ने उतना ही रिस्क लिया जितना घरवाले शादी में दूर के रिश्ते दिखाते हैं!",
-            "[मिस कॉल] नंबर तो ठीक-ठाक आ गए, पर किस्मत ने आखिरी वक्त पर वैसे ही कट कर दिया!",
-        ]
-        
-        roasts_low = [
-            "[सिर्फ हाजिरी] आप सिर्फ परीक्षा हॉल की हवा खाने आए थे क्या? इतना कम स्कोर देखकर हैरानी हुई!",
-            "[पूजा की थाली] परीक्षा में केवल श्रद्धा और भावना से काम नहीं चलता, कुछ सहायक अध्ययन भी जरूरी है!",
-            "[आंसू की बूंद] नंबर देखकर सच में आंखों में आंसू आ गए। यह नंबर है या शगुन का संकेत?",
-            "[सिर्फ मुस्कान] चेहरे पर मुस्कान तो पूरी है, पर मार्कशीट देखकर रोना आ जाए तो क्या करें?",
-            "[मिस्टर गुमनाम] नाम के आगे टैग लगाने से नंबर नहीं मिलते बाबूजी, इसके लिए पढ़ाई चाहिए!",
-            "[दर्शक दीर्घा] तुम क्विज़ खेलने नहीं, सिर्फ दूसरों के सही जवाबों पर तालियाँ बजाने आए थे!",
-            "[अंगूठा छाप] स्क्रीन पर उँगलियाँ तो ऐसे चल रही थीं जैसे हैकर हो, पर मार्क्स कहाँ से आएंगे?",
-            "[धूप सेकने वाले] परीक्षा हॉल में धूप सेकने आए थे क्या बाबूजी? जितना स्कोर मिला उतनी ही धूप है!",
-            "[मार्कशीट का विलेन] घरवाले अगर यह मार्कशीट देख लें, तो इनाम में सिर्फ फ्लॉप कॉलर ही मिलेगा!",
-        ]
-        
-        roasts_minus = [
-            "[कर्जदार खिलाड़ी] हंसना तो दूर की बात है, आप तो परीक्षक से भी उधार में नंबर माँग रहे हैं!",
-            "[माइनस मास्टर] भाई साहब! माइनस मार्किंग आपके लिए ही बनी थी। अगली बार थोड़ा प्रयास करना!",
-            "[दिवालिया] भाई साहब, आपका स्कोर देखकर बैंक वाले भी लोन देने से मना कर देंगे!",
-            "[दानवीर कर्ण] अपने सारे नंबर गलत जवाबों के रास्ते परीक्षक को दान कर आए। इसी को कहते हैं दान!",
-            "[ब्लैक होल] आपके अकाउंट में नंबर आते नहीं, सीधे गायब हो जाते हैं। माइनस मार्क की सुंदरता!",
-        ]
-
-        leaderboard = ""
-        for idx, (uid, meta) in enumerate(sorted_scores, 1):
-            user_display_name = game["joined_users"].get(uid, "Unknown User")
-            
-            # 🌟 FIX: Agar name @ se shuru hota hai (username hai), toh escape nahi karenge taaki link valid rahe
-            if str(user_display_name).startswith("@"):
-                clean_username = user_display_name  # Keep pure clickable username
-            else:
-                clean_username = escape_markdown(user_display_name) # Safe escape for normal names
-                
-            score = meta["score"]
-            wrong_count = meta["wrong"]
-            points = meta["points"]
-            total_time = format_time(meta["total_time"])
-            
-            # रोस्ट लॉजिक के लिए स्कोर परसेंटेज निकालना
-            percentage = (points / total_questions_answered * 100) if total_questions_answered > 0 else 0.0
-            
-            # 🔥 फिक्स रोस्ट सिलेक्शन: रैंक 1 को हमेशा टॉपर का सम्मान मिलेगा
-            if idx == 1:
-                roast_msg = random.choice(roasts_topper)
-            elif points < 0:
-                roast_msg = random.choice(roasts_minus)
-            elif percentage < 25:
-                roast_msg = random.choice(roasts_low)
-            else:
-                roast_msg = random.choice(roasts_middle)
-                
-            rank_icon = "🥇." if idx == 1 else "🥈." if idx == 2 else "🥉." if idx == 3 else f"{idx}."
-            
-            # Clean layout print without invalid characters or slashes
-            leaderboard += f"{rank_icon} <b>{clean_username}</b>\n"
-            leaderboard += f"   ➻ <b>Right:</b> {score}\n"
-            leaderboard += f"   ➻ <b>Wrong:</b> {wrong_count}\n"
-            leaderboard += f"   ➻ <b>Total Time Taken:</b> {total_time}\n"
-            leaderboard += f"   <blockquote><b>Final Score: {points:.2f} Points</b></blockquote>\n"
-            leaderboard += f"   <blockquote><b>{roast_msg}</b></blockquote>\n"
-            leaderboard += f"   🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n"
-        
-        footer = "\n🏆 Congratulations to all participants!"
-        full_message = header + subheader + leaderboard + footer
-        
-        # 🌟 FIX: Library wrapper ko bypass karke raw dictionary payload bheja taaki crash na ho
-        # compile_group_leaderboard function में, जहाँ buttons हैं:
-
-        share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
-        
-        # ✅ दोनों बटन - Side by Side
-        keyboard = [
-            [
-                InlineKeyboardButton("🔄 Start Again", url=share_url),
-                InlineKeyboardButton("📚 Ask AI Tutor", callback_data=f"asktutor_{game['quiz_id']}_{chat_id}")
-            ]
-        ]
-        
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=full_message, 
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-        GROUP_GAMES.pop(chat_id, None)
-    except Exception as e:
-        logging.error(f"Error in compile_group_leaderboard: {e}")
 
 # ====================================================================
 # 🎓 SIMPLE AI TUTOR - Just Show Existing Explanations
 # ====================================================================
 async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Simply show user ke galat questions ke explanations - Database se fetch karo"""
+    """Show user ke galat questions - 10 min tak hi available"""
     try:
         query = update.callback_query
         if not query:
@@ -3079,19 +2894,21 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = query.from_user.id
         logging.info(f"🎓 Tutor request from user {user_id} for quiz {quiz_id}")
         
-        # ✅ FIX: GROUP_GAMES se check karo, agar nahi to -1 return karo
+        # ✅ GROUP_GAMES mein data nahi mila
         game = GROUP_GAMES.get(chat_id)
         if not game:
-            # ℹ️ Quiz already finished - ye normal hai
-            logging.info(f"Quiz finished for chat {chat_id}, pero user {user_id} asking for tutor")
             await query.edit_message_text(
-                "⚠️ Quiz पहले से खत्म हो चुकी है।\n\n"
-                "Lekin tensions nahi - main tumhare answers ko database se check kar dunga! 🔍"
+                "⏰ <b>आपका समय समाप्त हो गया!</b>\n\n"
+                "😔 Quiz खत्म होने के 10 मिनट तक ही आप अपने गलत सवालों की समझाइश देख सकते हैं।\n\n"
+                "ℹ️ Next time जल्दी देखना!\n\n"
+                "💡 नया quiz खेलने के लिए /start दबाएं।",
+                parse_mode="HTML"
             )
             return
         
-        # ✅ FIX: Group games se data fetch karo
+        # ✅ GROUP_GAMES मिल गया - ab check karo
         user_answers = game.get("user_answers", {}).get(user_id)
+        
         if not user_answers:
             await query.edit_message_text("❌ आप इस quiz में शामिल नहीं थे")
             return
@@ -3128,7 +2945,7 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Make sure indices are valid
                 if 0 <= selected_idx < len(options) and 0 <= correct_idx < len(options):
                     wrong_questions.append({
-                        "q_number": q_idx + 1,
+                        "q_number": len(wrong_questions) + 1,
                         "question": q_text,
                         "options": options,
                         "user_selected_idx": selected_idx,
