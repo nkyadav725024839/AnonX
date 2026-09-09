@@ -3139,10 +3139,10 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not game:
             logging.warning(f"⚠️ GROUP_GAMES[{chat_id}] not found - data cleaned or expired")
             await query.message.reply_text(
-                f"⏰ <b>@{user_name} आपका समय समाप्त हो गया!</b>\n\n"
-                "😔 Quiz खत्म होने के 10 मिनट तक ही आप अपने गलत सवालों की समझाइश देख सकते हैं।\n\n"
+                f"⏰ <b>{user_name} आपका समय समाप्त हो गया!</b>\n\n"
+                "😔 Quiz खत्म होने के 10 मिनट तक ही आप अपने गलत सवालों की स्पष्टीकरण देख सकते हैं।\n\n"
                 "ℹ️ Next time जल्दी देखना!\n\n"
-                "💡 नया quiz खेलने के लिए /start दबाएं।",
+                "💡 नया quiz खेले।",
                 parse_mode="HTML"
             )
             return
@@ -3154,7 +3154,7 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if not user_answers:
             logging.warning(f"⚠️ User {user_id} not in user_answers")
-            await query.message.reply_text(f"❌ @{user_name}, आप इस quiz में शामिल नहीं थे")
+            await query.message.reply_text(f"🎯 {user_name}, आप इस quiz में शामिल नहीं थे")
             return
         
         # Get quiz questions
@@ -3167,7 +3167,7 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info(f"📚 Fetched {len(all_questions)} questions from database")
         
         if not all_questions:
-            await query.message.reply_text(f"❌ @{user_name}, Questions नहीं मिले")
+            await query.message.reply_text(f"🎯 {user_name}, Questions नहीं मिले")
             return
         
         # Find wrong answers
@@ -3204,7 +3204,7 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # अगर कोई गलत सवाल नहीं
         if not wrong_questions:
             await query.message.reply_text(
-                f"✅ <b>@{user_name} शाबाश! 🎉</b>\n\n"
+                f"✅ <b>{user_name} शाबाश! 🎉</b>\n\n"
                 "आपने सभी सवालों के सही जवाब दिए हैं!\n"
                 "आपका प्रदर्शन शानदार रहा! 👏",
                 parse_mode="HTML"
@@ -3213,40 +3213,40 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Build message
         tutor_text = (
-            f"📚 <b>@{user_name} के गलत सवाल और समझाइश</b>\n"
+            f"📚 <b>{user_name} आपके गलत सवाल और स्पष्टीकरण</b>\n"
             f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"━━━━━━━━━━━━━━━\n\n"
         )
         
         for q in wrong_questions:
             tutor_text += (
-                f"<b>❓ प्रश्न #{q['q_number']}:</b>\n"
+                f"<b>प्रश्न #{q['q_number']}:</b>\n"
                 f"{escape_markdown(q['question'])}\n\n"
                 f"<b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}\n"
                 f"<b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}\n\n"
-                f"<b>📖 समझाइश:</b>\n"
+                f"<b>📖 स्पष्टीकरण:</b>\n"
                 f"{escape_markdown(q['explanation'])}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"━━━━━━━━━━━━━━━\n\n"
             )
         
         # Handle long messages
         if len(tutor_text) > 4096:
             messages = []
             current_msg = (
-                f"📚 <b>@{user_name} के गलत सवाल और समझाइश</b>\n"
+                f"📚 <b>{user_name}  आपके गलत सवाल और स्पष्टीकरण</b>\n"
                 f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"━━━━━━━━━━━━━━\n\n"
             )
             
             for q in wrong_questions:
                 chunk = (
-                    f"<b>❓ प्रश्न #{q['q_number']}:</b>\n"
+                    f"<b>प्रश्न #{q['q_number']}:</b>\n"
                     f"{escape_markdown(q['question'])}\n\n"
                     f"<b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}\n"
                     f"<b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}\n\n"
-                    f"<b>📖 समझाइश:</b>\n"
+                    f"<b>📖 स्पष्टीकरण:</b>\n"
                     f"{escape_markdown(q['explanation'])}\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"━━━━━━━━━━━━━━━\n\n"
                 )
                 
                 if len(current_msg) + len(chunk) > 4096:
@@ -3263,7 +3263,7 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.message.reply_text(tutor_text, parse_mode="HTML")
         
-        logging.info(f"✅ Sent explanations to @{user_name} ({len(wrong_questions)} wrong questions)")
+        logging.info(f"✅ Sent explanations to {user_name} ({len(wrong_questions)} wrong questions)")
         
     except Exception as e:
         logging.error(f"Error in handle_ask_tutor: {e}", exc_info=True)
