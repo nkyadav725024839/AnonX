@@ -2977,39 +2977,39 @@ async def compile_group_leaderboard(chat_id, context):
         
         # 🎭 डायलॉग्स पूल (बिना किसी फिक्स नाम के - रैंडमली इस्तेमाल के लिए)
         roasts_topper = [
-            "[टॉपर भाई] भाई तुमने तो सीधे किताब ही रट मारी थी क्या? 🎓",
-            "[किताबी कीड़ा] इतनी पढ़ाई कहाँ से करते हो भाई? 📚",
-            "[गूगल का दामाद] भाई गूगल से सीधा कनेक्शन है क्या? 🔗",
-            "[वैज्ञानिक] इतना दिमाग लाते कहाँ से हो भाई? 🧠",
-            "[रट्टू तोता] लगता है आज सुबह पूरी किताब खा गए! 🦜",
+            "[टॉपर भाई] भाई तुमने तो सीधे किताब ही रट मारी थी क्या? टॉपर बनने का इरादा प्रमाणित है!",
+            "[किताबी कीड़ा] इतनी पढ़ाई कहाँ से करते हो भाई? हमें भी थोड़ा ज्ञान दे दो, गुरुजी!",
+            "[गूगल का दामाद] भाई गूगल से सीधा कनेक्शन है क्या तुम्हारा? या फिर अंतर्यामी हो?",
+            "[वैज्ञानिक] इतना दिमाग लाते कहाँ से हो भाई? नासा (NASA) वाले ढूंढ रहे हैं तुम्हें!",
+            "[रट्टू तोता] लगता है आज सुबह नाश्ते में पूरी किताब ही चबा कर खा गए थे। बाकी सब भूल गए!",
         ]
         
         roasts_middle = [
-            "[उड़ता परिंदा] नाम की तरह बस हवा में ही उड़ते रह गए 🪶",
-            "[समीक्षा बाबू] दूसरों की आलोचना करने में तो अव्वल हो! 😄",
-            "[त्रिशंकु खिलाड़ी] ना ऊपर, ना नीचे - बीच में ही लटके 🪂",
-            "[सेफ राइडर] उतना ही रिस्क लिया जितना जरूरत था 🛡️",
-            "[मिस कॉल] नंबर ठीक पर किस्मत नहीं साथ! 📞",
+            "[उड़ता परिंदा] नाम की तरह बस हवा में ही उड़ते रह गए, थोड़ा जमीन पर आते तो नहीं?",
+            "[समीक्षा बाबू] दूसरों की आलोचना करने में तो अव्वल हो, लेकिन नंबर देखकर लगता है सब भूल गए!",
+            "[त्रिशंकु खिलाड़ी] ना ऊपर पहुँच पाए, ना नीचे सुकून मिला। बीच में ऐसे लटके हो!",
+            "[सेफ राइडर] भाई ने उतना ही रिस्क लिया जितना घरवाले शादी में दूर के रिश्ते दिखाते हैं!",
+            "[मिस कॉल] नंबर तो ठीक-ठाक आ गए, पर किस्मत ने आखिरी वक्त पर वैसे ही कट कर दिया!",
         ]
         
         roasts_low = [
-            "[सिर्फ हाजिरी] सिर्फ परीक्षा हॉल की हवा खाने आए? 💨",
-            "[पूजा की थाली] श्रद्धा और भावना से नंबर नहीं मिलते 🙏",
-            "[आंसू की बूंद] नंबर देखकर आंखें भीग गईं 😢",
-            "[सिर्फ मुस्कान] चेहरे पर मुस्कान, पर मन टूटा 😅",
-            "[मिस्टर गुमनाम] नाम के आगे टैग से नंबर नहीं मिलते 🏷️",
-            "[दर्शक दीर्घा] सिर्फ तमाशा देखने आए थे 🎭",
-            "[अंगूठा छाप] उंगलियां चलीं पर दिमाग नहीं 👆",
-            "[धूप सेकने वाले] परीक्षा हॉल में धूप सेक रहे थे? ☀️",
-            "[मार्कशीट का विलेन] घरवाले को दिखाओ तो सीधे गोली! 🔫",
+            "[सिर्फ हाजिरी] आप सिर्फ परीक्षा हॉल की हवा खाने आए थे क्या? इतना कम स्कोर देखकर हैरानी हुई!",
+            "[पूजा की थाली] परीक्षा में केवल श्रद्धा और भावना से काम नहीं चलता, कुछ सहायक अध्ययन भी जरूरी है!",
+            "[आंसू की बूंद] नंबर देखकर सच में आंखों में आंसू आ गए। यह नंबर है या शगुन का संकेत?",
+            "[सिर्फ मुस्कान] चेहरे पर मुस्कान तो पूरी है, पर मार्कशीट देखकर रोना आ जाए तो क्या करें?",
+            "[मिस्टर गुमनाम] नाम के आगे टैग लगाने से नंबर नहीं मिलते बाबूजी, इसके लिए पढ़ाई चाहिए!",
+            "[दर्शक दीर्घा] तुम क्विज़ खेलने नहीं, सिर्फ दूसरों के सही जवाबों पर तालियाँ बजाने आए थे!",
+            "[अंगूठा छाप] स्क्रीन पर उँगलियाँ तो ऐसे चल रही थीं जैसे हैकर हो, पर मार्क्स कहाँ से आएंगे?",
+            "[धूप सेकने वाले] परीक्षा हॉल में धूप सेकने आए थे क्या बाबूजी? जितना स्कोर मिला उतनी ही धूप है!",
+            "[मार्कशीट का विलेन] घरवाले अगर यह मार्कशीट देख लें, तो इनाम में सिर्फ फ्लॉप कॉलर ही मिलेगा!",
         ]
         
         roasts_minus = [
-            "[कर्जदार खिलाड़ी] परीक्षक से भी उधार में नंबर! 😂",
-            "[माइनस मास्टर] माइनस मार्किंग आपके लिए ही बनी थी 📉",
-            "[दिवालिया] बैंक वाले भी लोन देने से मना करेंगे 🏦",
-            "[दानवीर कर्ण] सारे नंबर गलत जवाब को दान कर आए 🙏",
-            "[ब्लैक होल] नंबर आते नहीं, सीधे गायब हो जाते हैं 🕳️",
+            "[कर्जदार खिलाड़ी] हंसना तो दूर की बात है, आप तो परीक्षक से भी उधार में नंबर माँग रहे हैं!",
+            "[माइनस मास्टर] भाई साहब! माइनस मार्किंग आपके लिए ही बनी थी। अगली बार थोड़ा प्रयास करना!",
+            "[दिवालिया] भाई साहब, आपका स्कोर देखकर बैंक वाले भी लोन देने से मना कर देंगे!",
+            "[दानवीर कर्ण] अपने सारे नंबर गलत जवाबों के रास्ते परीक्षक को दान कर आए। इसी को कहते हैं दान!",
+            "[ब्लैक होल] आपके अकाउंट में नंबर आते नहीं, सीधे गायब हो जाते हैं। माइनस मार्क की सुंदरता!",
         ]
 
         leaderboard = ""
@@ -3044,10 +3044,10 @@ async def compile_group_leaderboard(chat_id, context):
             
             # Clean layout print without invalid characters or slashes
             leaderboard += f"{rank_icon} <b>{clean_username}</b>\n"
-            leaderboard += f"   ➻ <b>✅ सही:</b> {score}\n"
-            leaderboard += f"   ➻ <b>❌ गलत:</b> {wrong_count}\n"
-            leaderboard += f"   ➻ <b>⏱️ समय:</b> {total_time}\n"
-            leaderboard += f"   <blockquote><b>🎯 Final Score: {points:.2f} Points</b></blockquote>\n"
+            leaderboard += f"   ➻ <b>Right:</b> {score}\n"
+            leaderboard += f"   ➻ <b>Wrong:</b> {wrong_count}\n"
+            leaderboard += f"   ➻ <b>Total Time Taken:</b> {total_time}\n"
+            leaderboard += f"   <blockquote><b>Final Score: {points:.2f} Points</b></blockquote>\n"
             leaderboard += f"   <blockquote><b>{roast_msg}</b></blockquote>\n"
             leaderboard += f"   🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n"
         
@@ -3059,8 +3059,8 @@ async def compile_group_leaderboard(chat_id, context):
         # ✅ COLORED BUTTONS - Raw dictionary payload use karo
         keyboard = [
             [
-                {"text": "🔄 Start Again", "url": share_url, "style": "primary"},  # 🔵 BLUE
-                {"text": "📚 Ask AI Tutor", "callback_data": f"asktutor_{game['quiz_id']}_{chat_id}", "style": "success"}  # 🟢 GREEN
+                {"text": "✨ Start Again", "url": share_url, "style": "primary"},  # 🔵 BLUE
+                {"text": "🤔 Ask AI Tutor", "callback_data": f"asktutor_{game['quiz_id']}_{chat_id}", "style": "success"}  # 🟢 GREEN
             ]
         ]
         
@@ -3139,10 +3139,10 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not game:
             logging.warning(f"⚠️ GROUP_GAMES[{chat_id}] not found - data cleaned or expired")
             await query.message.reply_text(
-                f"⏰ <b>{user_name} आपका समय समाप्त हो गया!</b>\n\n"
-                "😔 Quiz खत्म होने के 10 मिनट तक ही आप अपने गलत सवालों की स्पष्टीकरण देख सकते हैं।\n\n"
-                "ℹ️ Next time जल्दी देखना!\n\n"
-                "💡 नया quiz खेले।",
+                f"<blockquote>⏰ <b>{user_name} आपका समय समाप्त हो गया!</b></blockquote>\n\n"
+                "<blockquote>😔 Quiz खत्म होने के 10 मिनट तक ही आप अपने गलत सवालों की स्पष्टीकरण देख सकते हैं।</blockquote>\n\n"
+                "<blockquote>ℹ️ Next time जल्दी देखना!</blockquote>\n\n"
+                "<blockquote>💡 नया quiz खेले।</blockquote>",
                 parse_mode="HTML"
             )
             return
@@ -3204,29 +3204,29 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # अगर कोई गलत सवाल नहीं
         if not wrong_questions:
             await query.message.reply_text(
-                f"✅ <b>{user_name} शाबाश! 🎉</b>\n\n"
-                "आपने सभी सवालों के सही जवाब दिए हैं!\n"
-                "आपका प्रदर्शन शानदार रहा! 👏",
+                f"<blockquote>✅ <b>{user_name} शाबाश! 🎉</b></blockquote>\n\n"
+                "<blockquote>आपने सभी सवालों के सही जवाब दिए हैं!</blockquote>\n"
+                "<blockquote>आपका प्रदर्शन शानदार रहा! 👏</blockquote>",
                 parse_mode="HTML"
             )
             return
         
         # Build message
         tutor_text = (
-            f"📚 <b>{user_name} आपके गलत सवाल और स्पष्टीकरण</b>\n"
-            f"<b>कुल गलत: {len(wrong_questions)}</b>\n"
-            f"━━━━━━━━━━━━━━━\n\n"
+            f"<blockquote>📚 <b>{user_name} आपके गलत सवाल और स्पष्टीकरण</b></blockquote>\n"
+            f"<blockquote><b>कुल गलत: {len(wrong_questions)}</b></blockquote>\n"
+            f"🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n\n"
         )
         
         for q in wrong_questions:
             tutor_text += (
-                f"<b>प्रश्न #{q['q_number']}:</b>\n"
-                f"{escape_markdown(q['question'])}\n\n"
-                f"<b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}\n"
-                f"<b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}\n\n"
-                f"<b>📖 स्पष्टीकरण:</b>\n"
-                f"{escape_markdown(q['explanation'])}\n"
-                f"━━━━━━━━━━━━━━━\n\n"
+                f"<blockquote><b>प्रश्न #{q['q_number']}:</b></blockquote>\n"
+                f"<blockquote>{escape_markdown(q['question'])}</blockquote>\n\n"
+                f"<blockquote><b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}</blockquote>\n"
+                f"<blockquote><b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}</blockquote>\n\n"
+                f"<blockquote><b>📖 स्पष्टीकरण:</b></blockquote>\n"
+                f"<blockquote>{escape_markdown(q['explanation'])}</blockquote>\n"
+                f"🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n\n"
             )
         
         # Handle long messages
@@ -3240,13 +3240,13 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             for q in wrong_questions:
                 chunk = (
-                    f"<b>प्रश्न #{q['q_number']}:</b>\n"
-                    f"{escape_markdown(q['question'])}\n\n"
-                    f"<b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}\n"
-                    f"<b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}\n\n"
-                    f"<b>📖 स्पष्टीकरण:</b>\n"
-                    f"{escape_markdown(q['explanation'])}\n"
-                    f"━━━━━━━━━━━━━━━\n\n"
+                    f"<blockquote><b>प्रश्न #{q['q_number']}:</b></blockquote>\n"
+                    f"<blockquote>{escape_markdown(q['question'])}</blockquote>\n\n"
+                    f"<blockquote><b>📋 आपका उत्तर:</b> ❌ {escape_markdown(q['options'][q['user_selected_idx']])}</blockquote>\n"
+                    f"<blockquote><b>✅ सही उत्तर:</b> {escape_markdown(q['options'][q['correct_idx']])}</blockquote>\n\n"
+                    f"<blockquote><b>📖 स्पष्टीकरण:</b></blockquote>\n"
+                    f"<blockquote>{escape_markdown(q['explanation'])}</blockquote>\n"
+                    f"🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n\n"
                 )
                 
                 if len(current_msg) + len(chunk) > 4096:
