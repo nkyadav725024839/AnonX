@@ -3047,6 +3047,139 @@ async def compile_group_leaderboard(chat_id, context):
         GROUP_GAMES.pop(chat_id, None)
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}")
+
+async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle AI Tutor button - show wrong answers और समझाने के लिए कहो"""
+    try:
+        query = update.callback_query
+        await query.answer("🤖 AI Tutor को load कर रहे हैं...")
+        
+        # Parse callback: asktutor_quiz_id
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        user_id = query.from_user.id
+        
+        # Check if quiz is in memory
+        chat_id = query.message.chat_id
+        if chat_id not in GROUP_GAMES:
+            await query.answer("❌ Quiz data नहीं मिला", show_alert=True)
+            return
+        
+        game = GROUP_GAMES[chat_id]
+        
+        # अगर यह user اس quiz में participated नहीं करा
+        if user_id not in game["user_answers"]:
+            await query.answer("❌ आप इस quiz में शामिल नहीं थे", show_alert=True)
+            return
+        
+        # User के गलत सवाल ढूंढो
+        user_wrong_questions = []
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT question_text, options, correct_answer, explanation FROM questions WHERE quiz_id = ?", (quiz_id,))
+        all_questions = cursor.fetchall()
+        conn.close()
+        
+        for q_idx, (q_text, options_json, correct_ans, explanation) in enumerate(all_questions):
+            if q_idx in game["user_answers"][user_id]:
+                answer_data = game["user_answers"][user_id][q_idx]
+                selected_idx = answer_data["selected"]
+                correct_idx = answer_data["correct_idx"]
+                
+                # अगर गलत जवाब दिया
+                if selected_idx != correct_idx and selected_idx != -1:
+                    options = json.loads(options_json)
+                    user_wrong_questions.append({
+                        "index": q_idx + 1,
+                        "question": q_text,
+                        "user_answer": options[selected_idx] if selected_idx < len(options) else "N/A",
+                        "correct_answer": options[correct_idx],
+                        "explanation": explanation
+                    })
+        
+        if not user_wrong_questions:
+            await query.answer("✅ बहुत बढ़िया! आप सभी सवाल सही कर गए!", show_alert=True)
+            return
+        
+        # AI Tutor को भेजो
+        await show_tutor_interface(query, user_wrong_questions)
+        
+    except Exception as e:
+        logging.error(f"Error in handle_ask_tutor: {e}")
+        await query.answer("❌ Error", show_alert=True)
+
+
+async def show_tutor_interface(query, wrong_questions):
+    """Show tutor interface for wrong questions"""
+    try:
+        # पहला गलत सवाल दिखाओ
+        if not wrong_questions:
+            await query.message.reply_text("✅ सब कुछ सही है!")
+            return
+        
+        q = wrong_questions[0]
+        tutor_text = (
+            f"📚 <b>AI Tutor - Question #{q['index']}</b>\n\n"
+            f"<b>❓ सवाल:</b> {escape_markdown(q['question'])}\n\n"
+            f"<b>❌ आपका जवाब:</b> {escape_markdown(q['user_answer'])}\n"
+            f"<b>✅ सही जवाब:</b> {escape_markdown(q['correct_answer'])}\n\n"
+            f"<b>📖 समझाइश:</b> {escape_markdown(q['explanation'])}\n\n"
+            f"━━━━━━━━━━━━━━━━━\n"
+            f"<b>कुल गलत सवाल:</b> {len(wrong_questions)}"
+        )
+        
+        # Navigation buttons
+        keyboard = [
+            [InlineKeyboardButton("📖 Next Question", callback_data=f"tutor_next_{0}_{len(wrong_questions)}")],
+            [InlineKeyboardButton("🎓 Ask AI More", callback_data=f"tutor_explain_{0}")]
+        ]
+        
+        await query.message.reply_text(tutor_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        
+    except Exception as e:
+        logging.error(f"Error in show_tutor_interface: {e}")
+
+
+async def handle_tutor_more(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Deep explanation from AI"""
+    try:
+        query = update.callback_query
+        await query.answer("🤖 AI से गहरी समझाइश मांग रहे हैं...")
+        
+        # AI से detailed explanation मांगो
+        if not ai_client:
+            await query.answer("❌ AI सेवा उपलब्ध नहीं है", show_alert=True)
+            return
+        
+        # आप custom prompt दे सकते हैं
+        prompt = f"""कृपया इस प्रश्न को विस्तार से समझाइये:
+
+प्रश्न: {query.message.text}
+
+कृपया:
+1. सरल भाषा में समझाइये
+2. उदाहरण दें
+3. मुख्य बातें highlight करें"""
+        
+        try:
+            response = ai_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            
+            explanation_text = (
+                f"🎓 <b>AI Tutor की विस्तृत समझाइश:</b>\n\n"
+                f"{response.text[:1000]}"  # First 1000 chars
+            )
+            
+            await query.message.reply_text(explanation_text, parse_mode="HTML")
+            
+        except Exception as e:
+            logging.error(f"AI explanation error: {e}")
+            await query.answer("❌ AI explanation error", show_alert=True)
+            
+    except Exception as e:
+        logging.error(f"Error in handle_tutor_more: {e}")
                  
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
