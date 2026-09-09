@@ -3027,16 +3027,22 @@ async def compile_group_leaderboard(chat_id, context):
         
         # 🌟 FIX: Library wrapper ko bypass karke raw dictionary payload bheja taaki crash na ho
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
-        
-        # Raw structure format dictionary injection
-        raw_button = {
+
+        # ✅ नया कोड - दोनों बटन:
+        raw_button_again = {
             "text": "Start Again ✨",
             "url": share_url,
-            "style": "success"  # Hara (Green) rang lagane ke liye. Neela chahiye toh "primary" likhein
+            "style": "success"  # Hara (Green) rang
         }
-        
-        # InlineKeyboardMarkup constructor manually object structures feed kar lega
-        kb = [[raw_button]]
+
+        raw_button_tutor = {
+            "text": "📚 Ask AI Tutor",
+            "callback_data": f"asktutor_{game['quiz_id']}",
+            "style": "primary"  # Neela (Blue) rang
+        }
+
+        # दोनों बटन एक row में
+        kb = [[raw_button_again, raw_button_tutor]]
         
         await context.bot.send_message(
             chat_id=chat_id, 
@@ -3120,12 +3126,12 @@ async def show_tutor_interface(query, wrong_questions):
         q = wrong_questions[0]
         tutor_text = (
             f"📚 <b>AI Tutor - Question #{q['index']}</b>\n\n"
-            f"<b>❓ सवाल:</b> {escape_markdown(q['question'])}\n\n"
-            f"<b>❌ आपका जवाब:</b> {escape_markdown(q['user_answer'])}\n"
-            f"<b>✅ सही जवाब:</b> {escape_markdown(q['correct_answer'])}\n\n"
-            f"<b>📖 समझाइश:</b> {escape_markdown(q['explanation'])}\n\n"
+            f"<b>❓ question:</b> {escape_markdown(q['question'])}\n\n"
+            f"<b>❌ your ans:</b> {escape_markdown(q['user_answer'])}\n"
+            f"<b>✅ correct ans:</b> {escape_markdown(q['correct_answer'])}\n\n"
+            f"<b>📖 Explanation:</b> {escape_markdown(q['explanation'])}\n\n"
             f"━━━━━━━━━━━━━━━━━\n"
-            f"<b>कुल गलत सवाल:</b> {len(wrong_questions)}"
+            f"<b>total wrong question:</b> {len(wrong_questions)}"
         )
         
         # Navigation buttons
@@ -3144,7 +3150,7 @@ async def handle_tutor_more(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Deep explanation from AI"""
     try:
         query = update.callback_query
-        await query.answer("🤖 AI से गहरी समझाइश मांग रहे हैं...")
+        await query.answer("🤖 AI से इस प्रश्नसमझाइश गहरी विस्तार मांग रहे हैं...")
         
         # AI से detailed explanation मांगो
         if not ai_client:
@@ -3168,7 +3174,7 @@ async def handle_tutor_more(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             
             explanation_text = (
-                f"🎓 <b>AI Tutor की विस्तृत समझाइश:</b>\n\n"
+                f"🎓 <b>AI Tutor की विस्तृत समझाइस:</b>\n\n"
                 f"{response.text[:1000]}"  # First 1000 chars
             )
             
