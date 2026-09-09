@@ -3029,14 +3029,21 @@ async def compile_group_leaderboard(chat_id, context):
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
         
         # Raw structure format dictionary injection
-        raw_button = {
+        # ✅ नया कोड - दोनों बटन:
+        raw_button_again = {
             "text": "Start Again ✨",
             "url": share_url,
-            "style": "success"  # Hara (Green) rang lagane ke liye. Neela chahiye toh "primary" likhein
+            "style": "success"  # Hara (Green) rang
         }
-        
-        # InlineKeyboardMarkup constructor manually object structures feed kar lega
-        kb = [[raw_button]]
+
+        raw_button_tutor = {
+            "text": "📚 Ask AI Tutor",
+            "callback_data": f"asktutor_{game['quiz_id']}",
+            "style": "primary"  # Neela (Blue) rang
+        }
+
+        # दोनों बटन एक row में
+        kb = [[raw_button_again, raw_button_tutor]]
         
         await context.bot.send_message(
             chat_id=chat_id, 
