@@ -2553,7 +2553,73 @@ async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFA
         logging.error(f"Error in handle_stop_quiz_from_pause: {e}", exc_info=True)
         await query.answer("❌ Error", show_alert=True)
         
-
+async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stop the running quiz in group - PROPERLY"""
+    try:
+        chat_id = update.effective_chat.id
+        
+        # Check if quiz is running in this chat
+        if chat_id not in GROUP_GAMES:
+            await update.message.reply_text("❌ Koi quiz is group me chal nahi rahi hai!")
+            return
+        
+        game = GROUP_GAMES[chat_id]
+        
+        # Check if quiz has started
+        if not game.get("quiz_started"):
+            await update.message.reply_text("❌ Quiz abhi start hi nahi huya hai!")
+            return
+        
+        logging.info(f"🛑 Stopping quiz for chat {chat_id}")
+        
+        # ✅ FIX 1: Mark quiz as paused/stopped immediately
+        game["quiz_paused"] = True
+        game["quiz_started"] = False
+        logging.info(f"✅ Set quiz_paused=True and quiz_started=False")
+        
+        # ✅ FIX 2: Cancel any pending background tasks
+        if "current_task" in game:
+            task = game["current_task"]
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    logging.info(f"✅ Cancelled background task for chat {chat_id}")
+                except Exception as e:
+                    logging.warning(f"⚠️ Error while cancelling task: {e}")
+        
+        # ✅ FIX 3: Stop active poll if any
+        current_q_idx = game.get("current_q", 0)
+        poll_ids_dict = game.get("poll_message_ids", {})
+        
+        if current_q_idx in poll_ids_dict:
+            poll_msg_id = poll_ids_dict[current_q_idx]
+            try:
+                await context.bot.stop_poll(chat_id=chat_id, message_id=poll_msg_id)
+                logging.info(f"✅ Stopped active poll (msg_id={poll_msg_id})")
+            except Exception as e:
+                logging.warning(f"⚠️ Could not stop poll: {e}")
+        
+        # ✅ FIX 4: Wait a bit for cleanup
+        await asyncio.sleep(1)
+        
+        # Show stop message
+        await update.message.reply_text(
+            "🛑 <b>Quiz stop ho gaya!</b>\n\n"
+            "🏁 Final Result dikha raha hoon...",
+            parse_mode="HTML"
+        )
+        
+        # ✅ FIX 5: Send leaderboard
+        await compile_group_leaderboard(chat_id, context)
+        
+        logging.info(f"✅ Quiz properly stopped for chat {chat_id}")
+        
+    except Exception as e:
+        logging.error(f"Error in stop_quiz: {e}", exc_info=True)
+        await update.message.reply_text("❌ Error stopping quiz")
+        
 async def send_next_group_poll(chat_id, context):
     """Send the next quiz question as a poll to the group"""
     try:
