@@ -2861,6 +2861,280 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logging.error(f"Error in track_poll_answers: {e}")
 
 # 🎖️ result leaderboard 
+# पहले यह global dictionary add करें (ऊपर जहाँ GROUP_GAMES है)
+# ====================================================================
+# 🎓 AI TUTOR HANDLERS
+# ====================================================================
+
+async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle 'Ask AI Tutor' button - show wrong answers with AI explanations"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Parse: asktutor_quiz_id_chat_id
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        chat_id = int(parts[2])
+        user_id = query.from_user.id
+        
+        logging.info(f"🎓 Tutor request from user {user_id} for quiz {quiz_id}")
+        
+        # Check if quiz data exists
+        if chat_id not in GROUP_GAMES:
+            await query.answer("❌ Quiz data नहीं मिला", show_alert=True)
+            return
+        
+        game = GROUP_GAMES[chat_id]
+        
+        # Check if user participated
+        if user_id not in game["user_answers"]:
+            await query.answer("❌ आप इस quiz में शामिल नहीं थे", show_alert=True)
+            return
+        
+        # Get all quiz questions
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT question_text, options, correct_answer, explanation FROM questions WHERE quiz_id = ?", (quiz_id,))
+        all_questions = cursor.fetchall()
+        conn.close()
+        
+        if not all_questions:
+            await query.answer("❌ Questions नहीं मिले", show_alert=True)
+            return
+        
+        # Find user's wrong answers
+        wrong_questions = []
+        for q_idx, (q_text, options_json, correct_ans, explanation) in enumerate(all_questions):
+            if q_idx in game["user_answers"][user_id]:
+                answer_data = game["user_answers"][user_id][q_idx]
+                selected_idx = answer_data["selected"]
+                correct_idx = answer_data["correct_idx"]
+                
+                # अगर गलत उत्तर दिया
+                if selected_idx != correct_idx and selected_idx != -1:
+                    options = json.loads(options_json)
+                    wrong_questions.append({
+                        "q_index": q_idx,
+                        "q_number": q_idx + 1,
+                        "question": q_text,
+                        "options": options,
+                        "user_selected": selected_idx,
+                        "user_answer": options[selected_idx] if 0 <= selected_idx < len(options) else "N/A",
+                        "correct_idx": correct_idx,
+                        "correct_answer": options[correct_idx] if 0 <= correct_idx < len(options) else "N/A",
+                        "explanation": explanation if explanation else "कोई विस्तृत समझाइश उपलब्ध नहीं है"
+                    })
+        
+        # अगर कोई गलत सवाल नहीं
+        if not wrong_questions:
+            await query.message.reply_text(
+                "✅ <b>शाबाश! 🎉</b>\n\n"
+                "आप सभी सवालों के सही जवाब दिए हैं!\n"
+                "आपका प्रदर्शन शानदार रहा! 👏",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Store in session
+        TUTOR_SESSIONS[user_id] = {
+            "quiz_id": quiz_id,
+            "chat_id": chat_id,
+            "wrong_questions": wrong_questions,
+            "current_index": 0
+        }
+        
+        logging.info(f"✅ User {user_id}: {len(wrong_questions)} wrong questions found")
+        
+        # Show first wrong question
+        await show_tutor_question(query.message, user_id, 0)
+        
+    except Exception as e:
+        logging.error(f"Error in handle_ask_tutor: {e}", exc_info=True)
+        try:
+            await query.answer("❌ Error loading tutor", show_alert=True)
+        except:
+            pass
+
+
+async def show_tutor_question(message, user_id, index):
+    """Display a wrong question with explanation"""
+    try:
+        if user_id not in TUTOR_SESSIONS:
+            await message.reply_text("❌ Session expired")
+            return
+        
+        session = TUTOR_SESSIONS[user_id]
+        wrong_questions = session["wrong_questions"]
+        
+        if index >= len(wrong_questions):
+            await message.reply_text("✅ सभी सवालों की समझाइश हो गई! 🎓")
+            TUTOR_SESSIONS.pop(user_id, None)
+            return
+        
+        q = wrong_questions[index]
+        
+        tutor_text = (
+            f"📚 <b>AI Tutor - Question #{q['q_number']}</b>\n"
+            f"<b>({index + 1}/{len(wrong_questions)})</b>\n\n"
+            
+            f"<b>❓ सवाल:</b>\n"
+            f"{escape_markdown(q['question'])}\n\n"
+            
+            f"<b>📋 Options:</b>\n"
+        )
+        
+        for i, opt in enumerate(q['options'], 1):
+            if i - 1 == q['user_selected']:
+                tutor_text += f"  ❌ {i}. {escape_markdown(opt)} (आपका उत्तर)\n"
+            elif i - 1 == q['correct_idx']:
+                tutor_text += f"  ✅ {i}. {escape_markdown(opt)} (सही उत्तर)\n"
+            else:
+                tutor_text += f"  ⭕ {i}. {escape_markdown(opt)}\n"
+        
+        tutor_text += (
+            f"\n<b>📖 समझाइश:</b>\n"
+            f"{escape_markdown(q['explanation'])}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"<b>Progress:</b> {index + 1} of {len(wrong_questions)}"
+        )
+        
+        # Navigation buttons
+        keyboard = []
+        
+        # Previous button
+        if index > 0:
+            keyboard.append(InlineKeyboardButton("⬅️ पिछला", callback_data=f"tutor_prev_{user_id}_{index}"))
+        
+        # Deep explanation button
+        keyboard.append(InlineKeyboardButton("🤖 AI से और समझें", callback_data=f"tutor_deep_{user_id}_{index}"))
+        
+        # Next button
+        if index < len(wrong_questions) - 1:
+            keyboard.append(InlineKeyboardButton("अगला ➡️", callback_data=f"tutor_next_{user_id}_{index}"))
+        
+        await message.reply_text(
+            tutor_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([keyboard]) if keyboard else None
+        )
+        
+    except Exception as e:
+        logging.error(f"Error in show_tutor_question: {e}", exc_info=True)
+
+
+async def handle_tutor_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle Next/Previous navigation in tutor"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        parts = query.data.split("_")
+        action = parts[1]  # 'next' or 'prev'
+        user_id = int(parts[2])
+        current_index = int(parts[3])
+        
+        if user_id not in TUTOR_SESSIONS:
+            await query.answer("❌ Session expired", show_alert=True)
+            return
+        
+        session = TUTOR_SESSIONS[user_id]
+        wrong_questions = session["wrong_questions"]
+        
+        # Calculate new index
+        if action == "next":
+            new_index = current_index + 1
+        else:  # prev
+            new_index = current_index - 1
+        
+        # Validate
+        if new_index < 0 or new_index >= len(wrong_questions):
+            await query.answer("❌ Invalid navigation", show_alert=True)
+            return
+        
+        # Delete old message and show new question
+        try:
+            await query.message.delete()
+        except:
+            pass
+        
+        await show_tutor_question(query.message, user_id, new_index)
+        
+    except Exception as e:
+        logging.error(f"Error in handle_tutor_navigation: {e}")
+        await query.answer("❌ Error", show_alert=True)
+
+
+async def handle_tutor_deep_explain(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get deeper explanation from AI"""
+    try:
+        query = update.callback_query
+        await query.answer("🤖 AI से विस्तृत समझाइश मांग रहे हैं...")
+        
+        parts = query.data.split("_")
+        user_id = int(parts[2])
+        q_index = int(parts[3])
+        
+        if user_id not in TUTOR_SESSIONS:
+            await query.answer("❌ Session expired", show_alert=True)
+            return
+        
+        session = TUTOR_SESSIONS[user_id]
+        wrong_questions = session["wrong_questions"]
+        q = wrong_questions[q_index]
+        
+        if not ai_client:
+            await query.answer("❌ AI Service उपलब्ध नहीं है", show_alert=True)
+            return
+        
+        # AI को prompt भेजो
+        prompt = f"""इस गलत उत्तर को समझाइये:
+
+प्रश्न: {q['question']}
+
+विकल्प:
+"""
+        for i, opt in enumerate(q['options'], 1):
+            prompt += f"{i}. {opt}\n"
+        
+        prompt += f"""
+छात्र का उत्तर: {q['user_answer']}
+सही उत्तर: {q['correct_answer']}
+
+कृपया:
+1. क्यों गलत है समझाइये
+2. सही उत्तर क्यों है
+3. एक आसान उदाहरण दें
+4. भविष्य में ऐसी गलती से कैसे बचें"""
+        
+        try:
+            response = ai_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            
+            ai_explanation = response.text[:2000]  # First 2000 chars
+            
+            deep_text = (
+                f"🎓 <b>AI Tutor की विस्तृत समझाइश:</b>\n\n"
+                f"{escape_markdown(ai_explanation)}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            
+            await query.message.reply_text(deep_text, parse_mode="HTML")
+            
+        except Exception as e:
+            logging.error(f"AI explanation failed: {e}")
+            await query.answer("❌ AI explanation failed", show_alert=True)
+        
+    except Exception as e:
+        logging.error(f"Error in handle_tutor_deep_explain: {e}", exc_info=True)
+
+
+# ====================================================================
+# Leaderboard function में यह बदलाव करें:
+# ====================================================================
+
 async def compile_group_leaderboard(chat_id, context):
     try:
         game = GROUP_GAMES.get(chat_id)
@@ -2871,7 +3145,6 @@ async def compile_group_leaderboard(chat_id, context):
         
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        # Title ke sath negative_value column fetch ki
         cursor.execute("SELECT title, negative_value FROM quizzes WHERE quiz_id = ?", (game["quiz_id"],))
         quiz_data = cursor.fetchone()
         quiz_title = quiz_data[0] if quiz_data else "Quiz"
@@ -2884,19 +3157,15 @@ async def compile_group_leaderboard(chat_id, context):
         total_questions_answered = len(questions)
         correct_answers = {}
         
-        # 🟢 FIXED: Convert ALL correct_answer values to INTEGER index
         for idx, (q_text, options_json, correct_ans) in enumerate(questions):
             options = json.loads(options_json)
             
-            # ✅ Convert correct_ans to INTEGER
             try:
-                correct_idx = int(correct_ans)  # 🟢 Direct conversion
-                # Validate range
+                correct_idx = int(correct_ans)
                 if correct_idx < 0 or correct_idx >= len(options):
                     logging.warning(f"Q{idx}: Invalid index {correct_idx}, using 0")
                     correct_idx = 0
             except (ValueError, TypeError):
-                # Fallback: try string matching (backward compat)
                 try:
                     correct_idx = options.index(str(correct_ans))
                     logging.info(f"Q{idx}: Converted string '{correct_ans}' to index {correct_idx}")
@@ -2904,7 +3173,7 @@ async def compile_group_leaderboard(chat_id, context):
                     correct_idx = 0
                     logging.warning(f"Q{idx}: Could not find '{correct_ans}', using 0")
             
-            correct_answers[idx] = correct_idx  # 🟢 Store INTEGER
+            correct_answers[idx] = correct_idx
             logging.info(f"✅ Leaderboard Q{idx}: correct_answer={correct_idx}, option='{options[correct_idx] if correct_idx < len(options) else 'N/A'}'")
         
         final_scores = {}
@@ -2917,11 +3186,10 @@ async def compile_group_leaderboard(chat_id, context):
             total_time = 0.0
             
             for question_idx, answer_data in user_answers.items():
-                selected_idx = answer_data["selected"]  # User ne jo select kiya
-                correct_idx = correct_answers.get(question_idx, -1)  # 🟢 Correct answer index
+                selected_idx = answer_data["selected"]
+                correct_idx = correct_answers.get(question_idx, -1)
                 
-                # 🟢 FIXED: Direct integer comparison (both are now INTEGER)
-                logging.info(f"User {uid}, Q{question_idx}: selected={selected_idx} (type: {type(selected_idx).__name__}), correct={correct_idx} (type: {type(correct_idx).__name__}), match={selected_idx == correct_idx}")
+                logging.info(f"User {uid}, Q{question_idx}: selected={selected_idx}, correct={correct_idx}, match={selected_idx == correct_idx}")
                 
                 if selected_idx == correct_idx:
                     score += 1
@@ -2932,11 +3200,9 @@ async def compile_group_leaderboard(chat_id, context):
                 else:
                     wrong += 1
             
-            # Core Formula: Right - (Wrong * Selected Button Value)
             calculated_points = float(score) - (float(wrong) * float(db_neg_multiplier))
             final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time, "points": calculated_points}
         
-        # Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
         sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:50]
         
         header = f"🏁 <b>The quiz '{escape_markdown(quiz_title)}' has finished!</b>\n"
@@ -2946,62 +3212,42 @@ async def compile_group_leaderboard(chat_id, context):
         subheader += f"👥 <b>Total Participants: {len(final_scores)}</b>\n"
         subheader += f"━━━━━━━━━━━━━━━━━\n\n"
         
-        # 🎭 डायलॉग्स पूल (बिना किसी फिक्स नाम के - रैंडमली इस्तेमाल के लिए)
         roasts_topper = [
-            "[टॉपर भाई] भाई तुमने तो सीधे किताब ही रट मारी थी क्या? टॉपर बनने का इरादा प्रमाणित है!",
-            "[किताबी कीड़ा] इतनी पढ़ाई कहाँ से करते हो भाई? हमें भी थोड़ा ज्ञान दे दो, गुरुजी!",
-            "[गूगल का दामाद] भाई गूगल से सीधा कनेक्शन है क्या तुम्हारा? या फिर अंतर्यामी हो?",
-            "[वैज्ञानिक] इतना दिमाग लाते कहाँ से हो भाई? नासा (NASA) वाले ढूंढ रहे हैं तुम्हें!",
-            "[रट्टू तोता] लगता है आज सुबह नाश्ते में पूरी किताब ही चबा कर खा गए थे। बाकी सब भूल गए!",
+            "[टॉपर भाई] भाई तुमने तो सीधे किताब ही रट मारी थी क्या?",
+            "[किताबी कीड़ा] इतनी पढ़ाई कहाँ से करते हो भाई?",
         ]
         
         roasts_middle = [
-            "[उड़ता परिंदा] नाम की तरह बस हवा में ही उड़ते रह गए, थोड़ा जमीन पर आते तो नहीं?",
-            "[समीक्षा बाबू] दूसरों की आलोचना करने में तो अव्वल हो, लेकिन नंबर देखकर लगता है सब भूल गए!",
-            "[त्रिशंकु खिलाड़ी] ना ऊपर पहुँच पाए, ना नीचे सुकून मिला। बीच में ऐसे लटके हो!",
-            "[सेफ राइडर] भाई ने उतना ही रिस्क लिया जितना घरवाले शादी में दूर के रिश्ते दिखाते हैं!",
-            "[मिस कॉल] नंबर तो ठीक-ठाक आ गए, पर किस्मत ने आखिरी वक्त पर वैसे ही कट कर दिया!",
+            "[उड़ता परिंदा] नाम की तरह बस हवा में ही उड़ते रह गए",
+            "[समीक्षा बाबू] दूसरों की आलोचना करने में तो अव्वल हो",
         ]
         
         roasts_low = [
-            "[सिर्फ हाजिरी] आप सिर्फ परीक्षा हॉल की हवा खाने आए थे क्या? इतना कम स्कोर देखकर हैरानी हुई!",
-            "[पूजा की थाली] परीक्षा में केवल श्रद्धा और भावना से काम नहीं चलता, कुछ सहायक अध्ययन भी जरूरी है!",
-            "[आंसू की बूंद] नंबर देखकर सच में आंखों में आंसू आ गए। यह नंबर है या शगुन का संकेत?",
-            "[सिर्फ मुस्कान] चेहरे पर मुस्कान तो पूरी है, पर मार्कशीट देखकर रोना आ जाए तो क्या करें?",
-            "[मिस्टर गुमनाम] नाम के आगे टैग लगाने से नंबर नहीं मिलते बाबूजी, इसके लिए पढ़ाई चाहिए!",
-            "[दर्शक दीर्घा] तुम क्विज़ खेलने नहीं, सिर्फ दूसरों के सही जवाबों पर तालियाँ बजाने आए थे!",
-            "[अंगूठा छाप] स्क्रीन पर उँगलियाँ तो ऐसे चल रही थीं जैसे हैकर हो, पर मार्क्स कहाँ से आएंगे?",
-            "[धूप सेकने वाले] परीक्षा हॉल में धूप सेकने आए थे क्या बाबूजी? जितना स्कोर मिला उतनी ही धूप है!",
-            "[मार्कशीट का विलेन] घरवाले अगर यह मार्कशीट देख लें, तो इनाम में सिर्फ फ्लॉप कॉलर ही मिलेगा!",
+            "[सिर्फ हाजिरी] आप सिर्फ परीक्षा हॉल की हवा खाने आए थे क्या?",
+            "[पूजा की थाली] परीक्षा में केवल श्रद्धा और भावना से काम नहीं चलता",
         ]
         
         roasts_minus = [
-            "[कर्जदार खिलाड़ी] हंसना तो दूर की बात है, आप तो परीक्षक से भी उधार में नंबर माँग रहे हैं!",
-            "[माइनस मास्टर] भाई साहब! माइनस मार्किंग आपके लिए ही बनी थी। अगली बार थोड़ा प्रयास करना!",
-            "[दिवालिया] भाई साहब, आपका स्कोर देखकर बैंक वाले भी लोन देने से मना कर देंगे!",
-            "[दानवीर कर्ण] अपने सारे नंबर गलत जवाबों के रास्ते परीक्षक को दान कर आए। इसी को कहते हैं दान!",
-            "[ब्लैक होल] आपके अकाउंट में नंबर आते नहीं, सीधे गायब हो जाते हैं। माइनस मार्क की सुंदरता!",
+            "[कर्जदार खिलाड़ी] आप तो परीक्षक से भी उधार में नंबर ले रहे हैं",
+            "[माइनस मास्टर] माइनस मार्किंग आपके लिए ही बनी थी",
         ]
 
         leaderboard = ""
         for idx, (uid, meta) in enumerate(sorted_scores, 1):
             user_display_name = game["joined_users"].get(uid, "Unknown User")
             
-            # 🌟 FIX: Agar name @ se shuru hota hai (username hai), toh escape nahi karenge taaki link valid rahe
             if str(user_display_name).startswith("@"):
-                clean_username = user_display_name  # Keep pure clickable username
+                clean_username = user_display_name
             else:
-                clean_username = escape_markdown(user_display_name) # Safe escape for normal names
+                clean_username = escape_markdown(user_display_name)
                 
             score = meta["score"]
             wrong_count = meta["wrong"]
             points = meta["points"]
             total_time = format_time(meta["total_time"])
             
-            # रोस्ट लॉजिक के लिए स्कोर परसेंटेज निकालना
             percentage = (points / total_questions_answered * 100) if total_questions_answered > 0 else 0.0
             
-            # 🔥 फिक्स रोस्ट सिलेक्शन: रैंक 1 को हमेशा टॉपर का सम्मान मिलेगा
             if idx == 1:
                 roast_msg = random.choice(roasts_topper)
             elif points < 0:
@@ -3013,11 +3259,10 @@ async def compile_group_leaderboard(chat_id, context):
                 
             rank_icon = "🥇." if idx == 1 else "🥈." if idx == 2 else "🥉." if idx == 3 else f"{idx}."
             
-            # Clean layout print without invalid characters or slashes
             leaderboard += f"{rank_icon} <b>{clean_username}</b>\n"
             leaderboard += f"   ➻ <b>Right:</b> {score}\n"
             leaderboard += f"   ➻ <b>Wrong:</b> {wrong_count}\n"
-            leaderboard += f"   ➻ <b>Total Time Taken:</b> {total_time}\n"
+            leaderboard += f"   ➻ <b>Total Time:</b> {total_time}\n"
             leaderboard += f"   <blockquote><b>Final Score: {points:.2f} Points</b></blockquote>\n"
             leaderboard += f"   <blockquote><b>{roast_msg}</b></blockquote>\n"
             leaderboard += f"   🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n"
@@ -3025,168 +3270,26 @@ async def compile_group_leaderboard(chat_id, context):
         footer = "\n🏆 Congratulations to all participants!"
         full_message = header + subheader + leaderboard + footer
         
-        # 🌟 FIX: Library wrapper ko bypass karke raw dictionary payload bheja taaki crash na ho
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
-
-        # ✅ नया कोड - दोनों बटन:
-        raw_button_again = {
-            "text": "Start Again ✨",
-            "url": share_url,
-            "style": "success"  # Hara (Green) rang
-        }
-
-        raw_button_tutor = {
-            "text": "📚 Ask AI Tutor",
-            "callback_data": f"asktutor_{game['quiz_id']}",
-            "style": "primary"  # Neela (Blue) rang
-        }
-
-        # दोनों बटन एक row में
-        kb = [[raw_button_again, raw_button_tutor]]
+        
+        # ✅ दोनों बटन - यहाँ बदलाव करें:
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 Start Again", url=share_url),
+                InlineKeyboardButton("📚 Ask AI Tutor", callback_data=f"asktutor_{game['quiz_id']}_{chat_id}")
+            ]
+        ]
         
         await context.bot.send_message(
             chat_id=chat_id, 
             text=full_message, 
-            reply_markup=InlineKeyboardMarkup(kb),
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
         GROUP_GAMES.pop(chat_id, None)
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}")
-
-async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle AI Tutor button - show wrong answers और समझाने के लिए कहो"""
-    try:
-        query = update.callback_query
-        await query.answer("🤖 AI Tutor को load कर रहे हैं...")
         
-        # Parse callback: asktutor_quiz_id
-        parts = query.data.split("_")
-        quiz_id = int(parts[1])
-        user_id = query.from_user.id
-        
-        # Check if quiz is in memory
-        chat_id = query.message.chat_id
-        if chat_id not in GROUP_GAMES:
-            await query.answer("❌ Quiz data नहीं मिला", show_alert=True)
-            return
-        
-        game = GROUP_GAMES[chat_id]
-        
-        # अगर यह user اس quiz में participated नहीं करा
-        if user_id not in game["user_answers"]:
-            await query.answer("❌ आप इस quiz में शामिल नहीं थे", show_alert=True)
-            return
-        
-        # User के गलत सवाल ढूंढो
-        user_wrong_questions = []
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT question_text, options, correct_answer, explanation FROM questions WHERE quiz_id = ?", (quiz_id,))
-        all_questions = cursor.fetchall()
-        conn.close()
-        
-        for q_idx, (q_text, options_json, correct_ans, explanation) in enumerate(all_questions):
-            if q_idx in game["user_answers"][user_id]:
-                answer_data = game["user_answers"][user_id][q_idx]
-                selected_idx = answer_data["selected"]
-                correct_idx = answer_data["correct_idx"]
-                
-                # अगर गलत जवाब दिया
-                if selected_idx != correct_idx and selected_idx != -1:
-                    options = json.loads(options_json)
-                    user_wrong_questions.append({
-                        "index": q_idx + 1,
-                        "question": q_text,
-                        "user_answer": options[selected_idx] if selected_idx < len(options) else "N/A",
-                        "correct_answer": options[correct_idx],
-                        "explanation": explanation
-                    })
-        
-        if not user_wrong_questions:
-            await query.answer("✅ बहुत बढ़िया! आप सभी सवाल सही कर गए!", show_alert=True)
-            return
-        
-        # AI Tutor को भेजो
-        await show_tutor_interface(query, user_wrong_questions)
-        
-    except Exception as e:
-        logging.error(f"Error in handle_ask_tutor: {e}")
-        await query.answer("❌ Error", show_alert=True)
-
-
-async def show_tutor_interface(query, wrong_questions):
-    """Show tutor interface for wrong questions"""
-    try:
-        # पहला गलत सवाल दिखाओ
-        if not wrong_questions:
-            await query.message.reply_text("✅ सब कुछ सही है!")
-            return
-        
-        q = wrong_questions[0]
-        tutor_text = (
-            f"📚 <b>AI Tutor - Question #{q['index']}</b>\n\n"
-            f"<b>❓ question:</b> {escape_markdown(q['question'])}\n\n"
-            f"<b>❌ your ans:</b> {escape_markdown(q['user_answer'])}\n"
-            f"<b>✅ correct ans:</b> {escape_markdown(q['correct_answer'])}\n\n"
-            f"<b>📖 Explanation:</b> {escape_markdown(q['explanation'])}\n\n"
-            f"━━━━━━━━━━━━━━━━━\n"
-            f"<b>total wrong question:</b> {len(wrong_questions)}"
-        )
-        
-        # Navigation buttons
-        keyboard = [
-            [InlineKeyboardButton("📖 Next Question", callback_data=f"tutor_next_{0}_{len(wrong_questions)}")],
-            [InlineKeyboardButton("🎓 Ask AI More", callback_data=f"tutor_explain_{0}")]
-        ]
-        
-        await query.message.reply_text(tutor_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
-        
-    except Exception as e:
-        logging.error(f"Error in show_tutor_interface: {e}")
-
-
-async def handle_tutor_more(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Deep explanation from AI"""
-    try:
-        query = update.callback_query
-        await query.answer("🤖 AI से इस प्रश्नसमझाइश गहरी विस्तार मांग रहे हैं...")
-        
-        # AI से detailed explanation मांगो
-        if not ai_client:
-            await query.answer("❌ AI सेवा उपलब्ध नहीं है", show_alert=True)
-            return
-        
-        # आप custom prompt दे सकते हैं
-        prompt = f"""कृपया इस प्रश्न को विस्तार से समझाइये:
-
-प्रश्न: {query.message.text}
-
-कृपया:
-1. सरल भाषा में समझाइये
-2. उदाहरण दें
-3. मुख्य बातें highlight करें"""
-        
-        try:
-            response = ai_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
-            )
-            
-            explanation_text = (
-                f"🎓 <b>AI Tutor की विस्तृत समझाइस:</b>\n\n"
-                f"{response.text[:1000]}"  # First 1000 chars
-            )
-            
-            await query.message.reply_text(explanation_text, parse_mode="HTML")
-            
-        except Exception as e:
-            logging.error(f"AI explanation error: {e}")
-            await query.answer("❌ AI explanation error", show_alert=True)
-            
-    except Exception as e:
-        logging.error(f"Error in handle_tutor_more: {e}")
-                 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         user_id = update.message.from_user.id if update.message else update.callback_query.from_user.id
